@@ -45,6 +45,7 @@ class diamond:
         self.db = db
         self.ncores = ncores
         self.outfile = os.path.join(self.outdir, "diamond.results.tsv")
+        self.log = os.path.join(self.outdir, "diamond.log")
         self.lineages = {}
         # sample n proteins
         logging.info("Subsampeling %d proteins" % sample)
@@ -53,7 +54,7 @@ class diamond:
 
         # runa search
         logging.info("Running diamond blastp")
-        self.search(self.outfile, self.samplefile, n=self.ncores)
+        self.search(self.outfile, self.samplefile)
         logging.debug("Parsing diamond output")
         self.parse_results(self.outfile)
         # infer lineages
@@ -62,7 +63,7 @@ class diamond:
         self.vote_bin()
         logging.debug("Finsihed the diamond step")
 
-    def search(self, outfile, query, n=1):
+    def search(self, outfile, query):
         if not os.path.exists(outfile):
             logging.info("Running diamond now")
             lst = [
@@ -73,7 +74,7 @@ class diamond:
                 "-q",
                 query,
                 "-p",
-                str(n),
+                str(self.ncores),
                 "--evalue",
                 str(1e-20),
                 "--max-target-seqs",
@@ -89,9 +90,11 @@ class diamond:
                 "-o",
                 outfile,
             ]
-            subprocess.run(lst)
+            with open(self.log , "w") as fout:
+                subprocess.run(lst, stderr = fout, stdout = fout)
         else:
-            logging.info("Diamond output already exists")
+            logging.info("Diamond output already exists ")
+            logging.debug("AT: %s" %  outfile)
 
     def sample(self, output, n=200):
         try:

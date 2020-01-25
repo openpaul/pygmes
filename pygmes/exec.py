@@ -5,7 +5,7 @@ import glob
 from pyfaidx import Fasta
 from random import sample
 from collections import defaultdict
-from modules.diamond import diamond
+from pygmes.diamond import diamond
 
 
 import urllib.request
@@ -23,6 +23,7 @@ class gmes:
     def __init__(self, fasta, outdir, ncores=1):
         self.fasta = os.path.abspath(fasta)
         self.outdir = os.path.abspath(outdir)
+        self.logfile = os.path.join(self.outdir, "pygmes.log")
         # make sure the output folder exists
         create_dir(self.outdir)
         self.ncores = ncores
@@ -45,7 +46,9 @@ class gmes:
             self.fasta,
         ]
         try:
-            subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True)
+            with open(self.logfile, "a") as fout:
+                subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
+                            stdout = fout, stderr = fout)
         except subprocess.CalledProcessError:
             logging.info("GeneMark-ES in self-training mode has failed")
         self.gtf2faa()
@@ -64,7 +67,9 @@ class gmes:
             self.fasta,
         ]
         try:
-            subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True)
+            with open(self.logfile, "a") as fout:
+                subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
+                            stdout = fout, stderr = fout)
         except subprocess.CalledProcessError:
             logging.info("GeneMark-ES in prediction mode has failed")
         self.gtf2faa()
@@ -73,6 +78,7 @@ class gmes:
         lst = ["get_sequence_from_GTF.pl", "genemark.gtf", self.fasta]
         if not os.path.exists(self.gtf):
             logging.warning("There is no GTF file")
+            return
         try:
             subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True)
         except subprocess.CalledProcessError:
@@ -100,7 +106,9 @@ class gmes:
         self.selftraining()
         if self.check_success():
             logging.info("Ran GeneMark-ES successfully")
+            return
         else:
+            logging.info("Using pre-trained models")
             self.premodel(models)
             if self.bestpremodel:
                 self.bestpremodel.estimate_tax(diamonddb)
@@ -122,17 +130,20 @@ class gmes:
     def estimate_tax(self, db):
         ddir = os.path.join(self.outdir, "diamond")
         create_dir(ddir)
-        d = diamond(self.protfaa, ddir, db, sample=200)
+        d = diamond(self.protfaa, ddir, db, sample=200, ncores = self.ncores)
         self.tax = d.lineage
 
     def premodel(self, models, stage=1):
+        logging.debug("Running the pre Model stage %d" % stage)
+        logging.debug("Using model directory: %s", models)
         self.bestpremodel = False
         modelfiles = glob.glob(os.path.join(models, "*.mod"))
         subgmes = []
         for model in modelfiles:
+            logging.debug("Using model %s" % os.path.basename(model))
             name = os.path.basename(model)
             odir = os.path.join(self.outdir, "{}_premodels".format(stage), name)
-            g = gmes(self.fasta, odir)
+            g = gmes(self.fasta, odir, ncores = self.ncores)
             g.prediction(model)
             if g.check_success():
                 subgmes.append(g)
@@ -150,7 +161,7 @@ class gmes:
             # set the best model as the model leading to the most amino acids
             idx = aminoacidcount.index(max(aminoacidcount))
             self.bestpremodel = subgmes[idx]
-            logging.info("Best model set as: %s" % self.bestpremodel)
+            logging.info("Best model set as: %s" % os.path.basename(self.bestpremodel.model))
 
     def infer_model(self, tax, n=3):
         """
