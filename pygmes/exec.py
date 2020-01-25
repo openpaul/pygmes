@@ -6,17 +6,21 @@ from pyfaidx import Fasta
 from random import sample
 from collections import defaultdict
 from pygmes.diamond import diamond
+from pygmes.printlngs import print_lngs
 
 
 import urllib.request
 
 
+url = "http://paulsaary.de/gmes/"
 def create_dir(d):
     if not os.path.isdir(d):
         try:
             os.makedirs(d)
         except OSError as e:
             logging.warning(f"Could not create dir: {d}\n{e}")
+
+
 
 
 class gmes:
@@ -30,6 +34,8 @@ class gmes:
 
         self.gtf = os.path.join(self.outdir, "genemark.gtf")
         self.protfaa = os.path.join(self.outdir, "prot_seq.faa")
+        self.finalfaa = False
+        self.modelinfomap = {}
 
     def selftraining(self):
         logging.debug("Starting self-training")
@@ -55,6 +61,7 @@ class gmes:
 
     def prediction(self, model):
         self.model = model
+        self.modelname = os.path.basename(model).replace(".mod","")
         logging.debug("Starting prediction")
         lst = [
             "gmes_petap.pl",
@@ -106,25 +113,25 @@ class gmes:
         self.selftraining()
         if self.check_success():
             logging.info("Ran GeneMark-ES successfully")
-            return
+            self.finalfaa = self.protfaa
         else:
             logging.info("Using pre-trained models")
+            self.fetchinfomap()
             self.premodel(models)
             if self.bestpremodel:
                 self.bestpremodel.estimate_tax(diamonddb)
                 self.premodeltax = self.bestpremodel.tax
-                logging.info(
-                    "Taxonomy in step 1 set to %s"
-                    % " ".join([str(i) for i in self.premodeltax])
-                )
+                # print linegae of model compared to the infered tax
+                print_lngs(self.modelinfomap[self.bestpremodel.modelname],
+                           self.premodeltax)
                 localmodals = self.infer_model(self.premodeltax)
                 self.premodel(localmodals, stage=2)
                 self.bestpremodel.estimate_tax(diamonddb)
                 self.premodeltax = self.bestpremodel.tax
-                logging.info(
-                    "Taxonomy in step 2 set to %s"
-                    % " ".join([str(i) for i in self.premodeltax])
-                )
+                # print linegae of model compared to the infered tax
+                print_lngs(self.modelinfomap[self.bestpremodel.modelname],
+                           self.premodeltax)
+                self.finalfaa = self.bestpremodel.protfaa
             # self.prediction()
 
     def estimate_tax(self, db):
@@ -163,6 +170,18 @@ class gmes:
             self.bestpremodel = subgmes[idx]
             logging.info("Best model set as: %s" % os.path.basename(self.bestpremodel.model))
 
+    def fetchinfomap(self):
+        """
+        function to make sure the information of all models
+        is known to the class
+        """
+        if len(self.modelinfomap) == 0:
+            info = self.fetch_info("{}info.csv".format(url))
+            for line in info.split("\n"):
+                l = line.split(",")
+                if len(l) == 3:
+                    self.modelinfomap[l[0]] = l[2].split("-")
+
     def infer_model(self, tax, n=3):
         """
         given we infered a lineage or we know a lineage
@@ -172,15 +191,9 @@ class gmes:
         taxonomic element with the predicted lineage
         If multiple modles have similar fit, we just again chose the best one
         """
-        url = "http://paulsaary.de/gmes/"
-        info = self.fetch_info("{}info.csv".format(url))
-        infomap = {}
-        for line in info.split("\n"):
-            l = line.split(",")
-            if len(l) == 3:
-                infomap[l[0]] = l[2].split("-")
+        self.fetchinfomap()
 
-        candidates = self.score_models(infomap, tax)
+        candidates = self.score_models(self.modelinfomap, tax)
 
         if len(candidates) > n:
             candidates = sample(candidates, n)

@@ -10,6 +10,8 @@ Welcome to pygmes's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+.. automodule:: pygmes.pygmes
+    :members:
 
 
 Indices and tables
