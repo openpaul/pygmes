@@ -4,6 +4,7 @@ import argparse
 from pygmes.exec import gmes
 import shutil
 import gzip
+import pygmes.version  as version
 
 this_dir, this_filename = os.path.split(__file__)
 MODELS_PATH = os.path.join(this_dir, "data", "models")
@@ -101,6 +102,7 @@ def main():
     parser.add_argument(
         "--debug", action="store_true", default=False, help="Debug and thus ignore safety",
     )
+    parser.add_argument("-v", "--version", action="version", version=f"pygmes version {version.__version__}")
     options = parser.parse_args()
 
     # define logging

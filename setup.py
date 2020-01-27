@@ -3,9 +3,12 @@ import setuptools
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+version = {}
+with open("pygmes/version.py") as fp:
+    exec(fp.read(), version)
 setuptools.setup(
     name="pygmes",
-    version="0.1",
+    version=version["__version__"],
     author="Paul Saary",
     author_email="saary@ebi.ac.uk",
     description="Run GeneMark-ES with some bells",
