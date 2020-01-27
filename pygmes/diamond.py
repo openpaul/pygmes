@@ -59,8 +59,8 @@ class diamond:
         self.parse_results(self.outfile)
         # infer lineages
         logging.debug("Inferring the lineage")
-        self.lineage_infer_protein()
-        self.vote_bin()
+        proteinlngs = self.lineage_infer_protein(self.result)
+        self.lineage  = self.vote_bin(proteinlngs)
         logging.debug("Finished the diamond step")
 
     def search(self, outfile, query):
@@ -132,9 +132,9 @@ class diamond:
                 print(f"Not able to fetch lineage for taxid {tax}")
                 return []
 
-    def lineage_infer_protein(self):
+    def lineage_infer_protein(self, result):
         prot = {}
-        for protein, taxids in self.result.items():
+        for protein, taxids in result.items():
             lngs = []
             for taxid in taxids:
                 l = self.inferlineage(taxid)
@@ -142,8 +142,70 @@ class diamond:
                     lngs.append(l)
 
             prot[protein] = majorityvote(lngs)
-        self.proteinlngs = prot
+        return prot
 
-    def vote_bin(self):
-        lngs = [lng for prot, lng in self.proteinlngs.items()]
-        self.lineage = majorityvote(lngs)
+    def vote_bin(self, proteinlngs):
+        lngs = [lng for prot, lng in proteinlngs.items()]
+        return majorityvote(lngs)
+
+    
+class multidiamond(diamond):
+    def __init__(self,proteinfiles, names, outdir, db, ncores = 1, nsample = 200):
+        self.outdir = os.path.abspath(outdir)
+        self.files = proteinfiles
+        self.names = names
+        self.samplefile = os.path.join(outdir, "samplefile.faa")
+        self.outfile = os.path.join(outdir, "diamond.result")
+        self.log = os.path.join(self.outdir, "diamond.log")
+        self.db = db
+        self.ncores = ncores
+        self.lineages = {}
+        # sample
+        with open(self.samplefile, "w") as f:
+            f.write("")
+        for fasta, name in zip(self.files, self.names):
+            self.sample(fasta, name, self.samplefile)
+        
+        # then run 
+        self.search(self.outfile, self.samplefile)
+        self.result = self.parse_results(self.outfile)
+        self.lngs = self.vote_bins(self.result)
+
+    def sample(self, fasta, name, output, n=200):
+        try:
+            faa = Fasta(fasta)
+        except ZeroDivisionError:
+            logging.warning(
+                "Could not read the faa file as it probably \n contains no sequence information. \n Check file: %s "
+                % fasta
+            )
+            return 0
+
+        keys = faa.keys()
+        if len(keys) > n:
+            keys = sample(keys, n)
+        with open(output, "a") as fout:
+            for k in keys:
+                fout.write(f">{name}_binseperator_{k}\n{str(faa[k])}\n")
+            
+    def parse_results(self, result):
+        def subdict():
+            return(defaultdict(list))
+        r = defaultdict(subdict)
+        with open(result) as f:
+            for line in f:
+                l = line.strip().split("\t")
+                names = l[0].split("_binseperator_")
+                binname = names[0]
+                protein = names[1]
+                r[binname][protein].append(l[5])
+        return r
+    
+    def vote_bins(self, result):
+        binnames = result.keys()
+        lngs = {}
+        for bin in binnames:
+            protlng = self.lineage_infer_protein(result[bin])
+            lngs[bin] = self.vote_bin(protlng)
+
+        return(lngs)

@@ -2,10 +2,13 @@ import os
 import logging
 import argparse
 from pygmes.exec import gmes
+from pygmes.diamond import multidiamond
 import shutil
 import gzip
+from glob import glob
 import pygmes.version  as version
 from pygmes.exec import create_dir
+from pygmes.printlngs import write_lngs
 
 this_dir, this_filename = os.path.split(__file__)
 MODELS_PATH = os.path.join(this_dir, "data", "models")
@@ -91,15 +94,92 @@ class pygmes:
                         o.write(line)
         return fastaOut
         
-    
+class metapygmes(pygmes):
+    """
+    run pygmes in metagenomic mode. This means
+    we will first try the self training mode on
+    all bins in the given folder
+    We will then use the models from all runs
+    to predict proteins in the remaining bins
+    and choose the protein prediction with the largest
+    number of AA. We then infer the lineage of each bin
+    """
+    def __init__(self, bindir, outdir, db, clean = True, ncores = 1, infertaxonomy = True):
+        # find all files and 
+        outdir = os.path.abspath(outdir)
+        self.outdir = outdir
+        bindir = os.path.abspath(bindir)
+        fa = glob(os.path.join(bindir, "*.fa"))
+        fna = glob(os.path.join(bindir, "*.fna"))
+        fasta = glob(os.path.join(bindir, "*.fasta"))
+        files = fa + fna + fasta
+        # convert all files to absolute paths
+        files = [os.path.abspath(f) for f in files]
+        names = [os.path.basename(f) for f  in files]
+        outdirs = [os.path.join(outdir, "gmes", name) for name in names]
+        proteinfiles = []
+        proteinnames = []
+        # if needed, we clean the fasta files
+        if clean:
+            files = [self.clean_fasta(f, o) for f,o in zip(files, outdirs) ]
+
+        # run self training step on all bins
+        gmesm = {}
+        for path, tdir, name in zip(files, outdirs, names):
+            gmesm[name] = gmes(path, tdir, ncores)
+            gmesm[name].selftraining()
+            gmesm[name].succeed = gmesm[name].check_success()
+
+        # this was the first round
+        # now we copyall models
+        modeldir = os.path.join(outdir, "1_models")
+        create_dir(modeldir)
+        nmodels = 0
+        for name, g  in gmesm.items():
+            if g.succeed:
+                proteinfiles.append(g.protfaa)
+                proteinnames.append(name)
+                # look for the model file and if present copy into the model directory
+                expectedmodel = os.path.join(g.outdir, "output","gmhmm.mod")
+                if os.path.exists(expectedmodel):
+                    shutil.copy(expectedmodel, os.path.join(modeldir, "{}.mod".format(name)))
+                    nmodels += 1
+        # now for each bin which we did not predict yet, we use the models from the dir
+        if nmodels == 0:
+            logging.warning("Could create models for a single bin. Thus we stop here")
+            return
+
+        # run step 2 of using the models
+        for name, g in gmesm.items():
+            if not g.succeed:
+                g.premodel(modeldir)
+                if g.bestpremodel is not False and  g.bestpremodel.check_success():
+                    shutil.copy(g.bestpremodel.protfaa, g.outdir)
+                    shutil.copy(g.bestpremodel.gtf, g.outdir)
+                    g.succeed = True
+                    proteinfiles.append(g.protfaa)
+                    proteinnames.append(name)
+
+        # diamond is faster when using more sequences
+        # thus we pool all fasta together and seperate them afterwards
+        diamonddir = os.path.join(outdir, "diamond")
+        create_dir(diamonddir)
+        logging.info("Predicting the lineage")
+        dmnd = multidiamond(proteinfiles, proteinnames, diamonddir, db = db, ncores = ncores)
+        logging.debug("Ran diamond and inferred lineaged")
+        lineagefile = os.path.join(self.outdir, "lineages.tsv")
+        write_lngs(dmnd.lngs, lineagefile)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate completeness and contamination of a MAG.")
-    parser.add_argument("--input", "-i", type=str, help="path to the fasta file")
+    parser.add_argument("--input", "-i", type=str, help="path to the fasta file, or in metagenome mode path to bin folder")
     parser.add_argument("--output", "-o", type=str, required=True, help="Path to the output folder")
     parser.add_argument("--db", "-d", type=str, required=True, help="Path to the diamond DB")
     parser.add_argument("--noclean", dest="noclean", default = True, action="store_false",required=False, help = "GeneMark-ES needs clean fasta headers and will fail if you dont proveide them. Set this flag if you don't want pygmes to clean your headers")
     parser.add_argument("--ncores", "-n", type=int, required=False, default = 1,
             help="Number of threads to use with GeneMark-ES and Diamond")
+    parser.add_argument("--meta", dest="meta", action = "store_true", default="False", help = "Run in metaegnomic mode")
     parser.add_argument(
         "--quiet", "-q", dest="quiet", action="store_true", default=False, help="Silcence most output",
     )
@@ -126,6 +206,11 @@ def main():
     logging.info("Starting pygmes")
     logging.debug("Using fasta: %s" % options.input)
     logging.debug("Using %d threads" % options.ncores)
-    
-    pygmes(options.input, options.output, options.db, clean = options.noclean,
+
+    if not options.meta:
+        pygmes(options.input, options.output, options.db, clean = options.noclean,
             ncores = options.ncores)
+    else:
+        metapygmes(options.input, options.output, options.db, clean = options.noclean,
+            ncores = options.ncores)
+
