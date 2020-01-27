@@ -48,6 +48,7 @@ class pygmes:
             logging.debug("Copying final faa from: %s" % g.finalfaa)
             shutil.copy(g.finalfaa, os.path.join(self.outdir, "predicted_proteins.faa"))
             g.gtf2bed(g.finalgtf, os.path.join(self.outdir, "predicted_proteins.bed"))
+            g.writetax()
         
     def clean_fasta(self, fastaIn, folder):
         create_dir(folder)

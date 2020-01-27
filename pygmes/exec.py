@@ -8,6 +8,9 @@ from random import sample
 from collections import defaultdict
 from pygmes.diamond import diamond
 from pygmes.printlngs import print_lngs
+from ete3 import NCBITaxa
+
+ncbi = NCBITaxa()
 
 
 import urllib.request
@@ -43,6 +46,7 @@ class gmes:
         self.protfaa = os.path.join(self.outdir, "prot_seq.faa")
         self.finalfaa = False
         self.finalgtf = False
+        self.tax = []
         self.modelinfomap = {}
 
     def selftraining(self):
@@ -191,6 +195,9 @@ class gmes:
             logging.info("Ran GeneMark-ES successfully")
             self.finalfaa = self.protfaa
             self.finalgtf = self.gtf
+            # predict the lng now
+            logging.info("Predicting the lng now")
+            self.estimate_tax(diamonddb)
         else:
             logging.info("Using pre-trained models")
             self.fetchinfomap()
@@ -198,18 +205,20 @@ class gmes:
             if self.bestpremodel:
                 self.bestpremodel.estimate_tax(diamonddb)
                 self.premodeltax = self.bestpremodel.tax
-                # print linegae of model compared to the infered tax
+                # print lineage of model compared to the infered tax
                 print_lngs(self.modelinfomap[self.bestpremodel.modelname],
                            self.premodeltax)
                 localmodals = self.infer_model(self.premodeltax)
                 self.premodel(localmodals, stage=2)
                 self.bestpremodel.estimate_tax(diamonddb)
                 self.premodeltax = self.bestpremodel.tax
-                # print linegae of model compared to the infered tax
+                # print lineage of model compared to the infered tax
                 print_lngs(self.modelinfomap[self.bestpremodel.modelname],
                            self.premodeltax)
+                # set the final values of of the protein prediction step
                 self.finalfaa = self.bestpremodel.protfaa
                 self.finalgtf = self.bestpremodel.gtf
+                self.tax = self.bestpremodel.tax
             # self.prediction()
 
     def estimate_tax(self, db):
@@ -316,3 +325,26 @@ class gmes:
             if s == maxscore:
                 candidates.append(m)
         return candidates
+
+    def writetax(self):
+        """
+        write infered taxonomy in a machine and human readble format
+        """
+        logging.info("Translating lineage")
+        taxf = os.path.join(self.outdir, "lineage.txt")
+        with open(taxf, "w") as fout:
+           # get the information
+            lng = self.tax
+            nms = ncbi.get_taxid_translator(lng)
+            ranks = ncbi.get_rank(lng)
+            # first line is taxids in machine readable
+            s = "-".join([str(i) for i in lng])
+            fout.write("#taxidlineage: {}\n".format(s))
+            fout.write("taxid\tncbi_rank\tncbi_name\n")
+            for taxid in lng:
+                if taxid in nms.keys():
+                    name = nms[taxid]
+                else:
+                    name = "unnamed"
+                fout.write(f"{taxid}\t{ranks[taxid]}\t{name}\n") 
+        logging.info("Wrote lineage to %s" % taxf)
