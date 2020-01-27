@@ -58,10 +58,10 @@ class diamond:
         logging.debug("Parsing diamond output")
         self.parse_results(self.outfile)
         # infer lineages
-        logging.debug("Infering the lineage")
+        logging.debug("Inferring the lineage")
         self.lineage_infer_protein()
         self.vote_bin()
-        logging.debug("Finsihed the diamond step")
+        logging.debug("Finished the diamond step")
 
     def search(self, outfile, query):
         if not os.path.exists(outfile):
