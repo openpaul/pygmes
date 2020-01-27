@@ -12,8 +12,20 @@ MODELS_PATH = os.path.join(this_dir, "data", "models")
 
 
 class pygmes:
-    """The main pygmes class. This is the class exposing pygmes
-    high level algorythm
+    """
+    Main class exposing the functionality
+
+    Parameters:
+
+    **fasta:** path to a fasta file
+
+    **outdir:** path to a writable directory
+
+    **db:** path to a diamond database with tax information
+
+    **clean:** bool indicating if faster needs cleaning of headers
+
+    **ncores:** number of threads to use
     """
     def __init__(self, fasta, outdir, db,  clean = True, ncores = 1):
         self.fasta = fasta
