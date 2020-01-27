@@ -28,6 +28,7 @@ class gmes:
         self.fasta = os.path.abspath(fasta)
         self.outdir = os.path.abspath(outdir)
         self.logfile = os.path.join(self.outdir, "pygmes.log")
+        self.loggtf = os.path.join(self.outdir, "pygmes_gtf.log")
         # make sure the output folder exists
         create_dir(self.outdir)
         self.ncores = ncores
@@ -87,7 +88,9 @@ class gmes:
             logging.warning("There is no GTF file")
             return
         try:
-            subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True)
+            with open(self.logfilegtf, "a") as fout:
+                subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
+                            stdout = fout, stderr = fout)
         except subprocess.CalledProcessError:
             logging.warning("could not get proteins from gtf")
 
