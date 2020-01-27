@@ -148,8 +148,10 @@ def write_lngs(lngs, outfile):
     """
     logging.info("Translating lineage")
     with open(outfile, "w") as fout:
-        fout.write("bin\ttaxid\tncbi_rank\tncbi_name\n")
-        for binname, lng in lngs.items():
+        fout.write("bin\ttaxid\tncbi_rank\tncbi_name\tbasedon\n")
+        for binname, lngi in lngs.items():
+            lng = lngi['lng']
+            nprots = lngi['n']
             nms = ncbi.get_taxid_translator(lng)
             ranks = ncbi.get_rank(lng)
             for taxid in lng:
@@ -157,5 +159,5 @@ def write_lngs(lngs, outfile):
                     name = nms[taxid]
                 else:
                     name = "unnamed"
-                fout.write(f"{binname}\t{taxid}\t{ranks[taxid]}\t{name}\n") 
+                fout.write(f"{binname}\t{taxid}\t{ranks[taxid]}\t{name}\t{nprots}\n") 
         logging.info("Wrote lineage to %s" % outfile)

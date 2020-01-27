@@ -187,7 +187,7 @@ class multidiamond(diamond):
         with open(output, "a") as fout:
             for k in keys:
                 fout.write(f">{name}_binseperator_{k}\n{str(faa[k])}\n")
-            
+    
     def parse_results(self, result):
         def subdict():
             return(defaultdict(list))
@@ -206,6 +206,8 @@ class multidiamond(diamond):
         lngs = {}
         for bin in binnames:
             protlng = self.lineage_infer_protein(result[bin])
-            lngs[bin] = self.vote_bin(protlng)
+            lngs[bin] = {}
+            lngs[bin]["lng"] = self.vote_bin(protlng)
+            lngs[bin]["n"] = len(protlng)
 
         return(lngs)
