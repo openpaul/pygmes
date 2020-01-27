@@ -5,6 +5,7 @@ from pygmes.exec import gmes
 import shutil
 import gzip
 import pygmes.version  as version
+from pygmes.exec import create_dir
 
 this_dir, this_filename = os.path.split(__file__)
 MODELS_PATH = os.path.join(this_dir, "data", "models")
@@ -46,8 +47,10 @@ class pygmes:
         if g.finalfaa:
             logging.debug("Copying final faa from: %s" % g.finalfaa)
             shutil.copy(g.finalfaa, os.path.join(self.outdir, "predicted_proteins.faa"))
+            g.gtf2bed(g.finalgtf, os.path.join(self.outdir, "predicted_proteins.bed"))
         
     def clean_fasta(self, fastaIn, folder):
+        create_dir(folder)
         name = os.path.basename(fastaIn)
         fastaOut = os.path.join(folder, name)
         mappingfile = os.path.join(folder, "mapping.csv")

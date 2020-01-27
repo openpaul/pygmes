@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import glob
+import re
 from pyfaidx import Fasta
 from random import sample
 from collections import defaultdict
@@ -22,6 +23,11 @@ def create_dir(d):
 
 
 
+def touch(fname, mode=0o666, dir_fd=None, **kwargs):
+    flags = os.O_CREAT | os.O_APPEND
+    with os.fdopen(os.open(fname, flags=flags, mode=mode, dir_fd=dir_fd)) as f:
+        os.utime(f.fileno() if os.utime in os.supports_fd else fname,
+            dir_fd=None if os.supports_fd else dir_fd, **kwargs)
 
 class gmes:
     def __init__(self, fasta, outdir, ncores=1):
@@ -36,9 +42,19 @@ class gmes:
         self.gtf = os.path.join(self.outdir, "genemark.gtf")
         self.protfaa = os.path.join(self.outdir, "prot_seq.faa")
         self.finalfaa = False
+        self.finalgtf = False
         self.modelinfomap = {}
 
     def selftraining(self):
+        failpath = os.path.join(self.outdir, "tried_already")
+        if os.path.exists(failpath):
+            logging.info("Self-training skipped, as we did this before and it failed")
+            return
+        if os.path.exists(self.gtf):
+            logging.info("GTF file already exists, skipping")
+            self.gtf2faa()
+            return
+
         logging.debug("Starting self-training")
         lst = [
             "gmes_petap.pl",
@@ -57,12 +73,21 @@ class gmes:
                 subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
                             stdout = fout, stderr = fout)
         except subprocess.CalledProcessError:
+            touch(failpath)
             logging.info("GeneMark-ES in self-training mode has failed")
         self.gtf2faa()
 
     def prediction(self, model):
         self.model = model
         self.modelname = os.path.basename(model).replace(".mod","")
+        failpath = os.path.join(self.outdir, "tried_already")
+        if os.path.exists(failpath):
+            logging.info("Prediction skipped, as we did this before and it failed")
+            return
+        if os.path.exists(self.gtf):
+            logging.info("GTF file already exists, skipping")
+            self.gtf2faa()
+            return
         logging.debug("Starting prediction")
         lst = [
             "gmes_petap.pl",
@@ -80,6 +105,7 @@ class gmes:
                             stdout = fout, stderr = fout)
         except subprocess.CalledProcessError:
             logging.info("GeneMark-ES in prediction mode has failed")
+            touch(failpath)
         self.gtf2faa()
 
     def gtf2faa(self):
@@ -87,12 +113,59 @@ class gmes:
         if not os.path.exists(self.gtf):
             logging.warning("There is no GTF file")
             return
+        if os.path.exists(self.protfaa):
+            logging.info("Protein file already exists, skipping")
+            return
         try:
-            with open(self.logfilegtf, "a") as fout:
+            with open(self.loggtf, "a") as fout:
                 subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
                             stdout = fout, stderr = fout)
         except subprocess.CalledProcessError:
             logging.warning("could not get proteins from gtf")
+    
+    def gtf2bed(self, gtf, outfile):
+        """
+        given a faa file and a gtf(genemark-es format)
+        we will be able to create a bed file, which can be used 
+        with eukcc
+        """
+        nre = re.compile(r'gene_id "([0-9]+_g)\";')
+        def beddict():
+            return({"chrom": None, "r": [], "strand": None})
+        beds = defaultdict(beddict)
+
+        with open(gtf) as f:
+            for line in f:
+                # skip comment lines
+                if line.startswith("#"):
+                    continue
+
+                l = line.split("\t")
+                chrom = l[0].strip()
+                start = int(l[3])
+                stop = int(l[4])
+                strand = l[6]
+
+                # regex match
+                m = (nre.findall(l[8]))
+                if m is not None:
+                    name = m[0]
+                else:
+                    continue
+    
+                # save all in the dictonary
+                beds[name]["chrom"] = l[0]
+                beds[name]["r"].append(int(l[3]))
+                beds[name]["r"].append(int(l[4]))
+                beds[name]["strand"] = l[6]
+
+        # write to file
+        with open(outfile, "w") as f:
+            for name, v in beds.items():
+                vals = "\t".join([v["chrom"], str(min(v["r"])), str(max(v["r"])), v['strand'], name])
+                f.write("{}\n".format(vals))
+
+        
 
     def check_success(self):
         if not os.path.exists(self.gtf):
@@ -117,6 +190,7 @@ class gmes:
         if self.check_success():
             logging.info("Ran GeneMark-ES successfully")
             self.finalfaa = self.protfaa
+            self.finalgtf = self.gtf
         else:
             logging.info("Using pre-trained models")
             self.fetchinfomap()
@@ -135,6 +209,7 @@ class gmes:
                 print_lngs(self.modelinfomap[self.bestpremodel.modelname],
                            self.premodeltax)
                 self.finalfaa = self.bestpremodel.protfaa
+                self.finalgtf = self.bestpremodel.gtf
             # self.prediction()
 
     def estimate_tax(self, db):
