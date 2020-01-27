@@ -12,8 +12,8 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="",
-    py_modules=["__main__"],
-    entry_points={"console_scripts": ["pygmes = pygmes.__main__:main"]},
+    py_modules=["api"],
+    entry_points={"console_scripts": ["pygmes = pygmes.api:main"]},
     install_requires=["ete3", "pyfaidx"],
     packages=setuptools.find_packages(),
     classifiers=[
