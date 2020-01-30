@@ -127,17 +127,13 @@ class gmes:
         except subprocess.CalledProcessError:
             logging.warning("could not get proteins from gtf")
     
-    def gtf2bed(self, gtf, outfile):
-        """
-        given a faa file and a gtf(genemark-es format)
-        we will be able to create a bed file, which can be used 
-        with eukcc
-        """
+    def parse_gtf(self, gtf):
+        """Given a gtf file from genemark es it extracts 
+        some information to create a bed file"""
         nre = re.compile(r'gene_id "([0-9]+_g)\";')
         def beddict():
             return({"chrom": None, "r": [], "strand": None})
         beds = defaultdict(beddict)
-
         with open(gtf) as f:
             for line in f:
                 # skip comment lines
@@ -162,14 +158,61 @@ class gmes:
                 beds[name]["r"].append(int(l[3]))
                 beds[name]["r"].append(int(l[4]))
                 beds[name]["strand"] = l[6]
+        return beds
 
+    def gtf2bed(self, gtf, outfile):
+        """
+        given a faa file and a gtf(genemark-es format)
+        we will be able to create a bed file, which can be used 
+        with eukcc
+        """
+        if os.path.exists(outfile):
+            logging.warning("Bedfile already exists, skipping")
+            return
+
+
+        # load gtf
+        beds = self.parse_gtf(gtf)
         # write to file
         with open(outfile, "w") as f:
             for name, v in beds.items():
                 vals = "\t".join([v["chrom"], str(min(v["r"])), str(max(v["r"])), v['strand'], name])
                 f.write("{}\n".format(vals))
-
         
+    def rename_for_CAT(self, faa = None, gtf = None):
+        """
+        renames the protein file
+        to matche the format:
+            >contigname_ORFNUMBER
+
+            eg:
+                >NODE_1_1
+        """
+        self.protfaa_cat = os.path.join(self.outdir, "prot_faa_CAT.faa")
+        if faa is None:
+            faa = self.protfaa
+        if gtf is None:
+            gtf = self.gtf
+        faa = Fasta(faa)
+        # load gtf
+        beds = self.parse_gtf(gtf)
+        orfcounter = defaultdict(int)
+        # parse and rename
+        with open(self.protfaa_cat, "w") as fout:
+            for record in faa:
+                if record.name not in beds.keys():
+                    logging.warning("The protein was not found in the gtf file:")
+                    print("protein: %s" % record.name)
+                    print("GTF file: %s" % gtf)
+                    logging.warning("stopping here, this is a bug in pygmes or an issue with GeneMark-ES")
+                    exit()
+                contig = beds[record.name]['chrom']
+                orfcounter[contig] += 1
+                # we use 1 as the first number, instead of the cool 0
+                newprotname = "{}_ORF{}".format(contig, orfcounter[contig])
+                fout.write(">{}\n{}\n".format(newprotname, record))
+        
+
 
     def check_success(self):
         if not os.path.exists(self.gtf):

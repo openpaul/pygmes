@@ -9,6 +9,7 @@ from glob import glob
 import pygmes.version  as version
 from pygmes.exec import create_dir
 from pygmes.printlngs import write_lngs
+from pygmes.prodigal import prodigal
 
 this_dir, this_filename = os.path.split(__file__)
 MODELS_PATH = os.path.join(this_dir, "data", "models")
@@ -57,6 +58,9 @@ class pygmes:
         create_dir(folder)
         name = os.path.basename(fastaIn)
         fastaOut = os.path.join(folder, name)
+        if os.path.exists(fastaOut):
+            logging.info("Fasta already exists and is likely clean")
+            return fastaOut
         mappingfile = os.path.join(folder, "mapping.csv")
         logging.debug("Cleaning fasta file")
         nms = []
@@ -137,6 +141,10 @@ class metapygmes(pygmes):
         nmodels = 0
         for name, g  in gmesm.items():
             if g.succeed:
+                # rename for CAT
+                g.rename_for_CAT()
+                g.finalfaa = g.protfaa
+                g.finalgtf = g.gtf
                 proteinfiles.append(g.protfaa)
                 proteinnames.append(name)
                 # look for the model file and if present copy into the model directory
@@ -154,22 +162,78 @@ class metapygmes(pygmes):
             if not g.succeed:
                 g.premodel(modeldir)
                 if g.bestpremodel is not False and  g.bestpremodel.check_success():
+                    # rename for CAT
+                    g.bestpremodel.rename_for_CAT()
+                    g.finalfaa = g.bestpremodel.protfaa
+                    g.finalgtf = g.bestpremodel.gtf
                     shutil.copy(g.bestpremodel.protfaa, g.outdir)
                     shutil.copy(g.bestpremodel.gtf, g.outdir)
+                    shutil.copy(g.bestpremodel.protfaa_cat, g.outdir)
                     g.succeed = True
                     proteinfiles.append(g.protfaa)
                     proteinnames.append(name)
 
         # diamond is faster when using more sequences
         # thus we pool all fasta together and seperate them afterwards
-        diamonddir = os.path.join(outdir, "diamond")
+        diamonddir = os.path.join(outdir, "diamond", "step_1")
         create_dir(diamonddir)
         logging.info("Predicting the lineage")
         dmnd = multidiamond(proteinfiles, proteinnames, diamonddir, db = db, ncores = ncores)
-        logging.debug("Ran diamond and inferred lineaged")
+        logging.debug("Ran diamond and inferred lineages")
+        #lineagefile = os.path.join(self.outdir, "lineages.tsv")
+        #write_lngs(dmnd.lngs, lineagefile)
+        # now we know which mags are eukayotic
+        # we could now run prodigal for all non eukayotic bins to see
+        # if we can improve the proteinpreidction
+        prodigaldir = os.path.join(self.outdir, "prodigal")
+        create_dir(prodigaldir)
+        logging.info("Trying prodigal for failed and non eukaryotic bins")
+        for name, g in gmesm.items():
+            g.try_prodigal = False
+            if name not in dmnd.lngs.keys():
+                g.try_prodigal = True
+            else:
+                # if bin was not classified as eukaryotic we try prodigal
+                if 2759 not in dmnd.lngs[name]['lng']:
+                    g.try_prodigal = True
+            if g.try_prodigal:
+               g.prodigaldir = os.path.join(prodigaldir, name)
+               create_dir(g.prodigaldir)
+               g.prodigal = prodigal(g.fasta,  g.prodigaldir, ncores)
+
+        # summarise the final result
+        finaloutdir = os.path.join(self.outdir, "hybridpredicted")
+        create_dir(finaloutdir)
+        proteinfiles  = []
+        proteinnames = []
+        for name, g in gmesm.items():
+            logging.debug("Copy final files: %s" % name)
+            t =  os.path.join(finaloutdir, "{}.faa".format(name))
+            if not g.try_prodigal:
+                # all likely eukryotic bins
+                print(f"cp {g.finalfaa} {t}")
+                if g.succeed or (g.bestpremodel is not False and  g.bestpremodel.check_success()):
+                    shutil.copy2(g.finalfaa, t)
+                    proteinfiles.append(t)
+                    proteinnames .append(name)
+                else:
+                    logging.info("Could not predict proteins for bin %s" % name)
+            else:
+                # all possible bacterial bins
+                if os.path.exists(g.prodigal.faa) and g.check_success():
+                    shutil.copy2(g.prodigal.faa, t)
+                    proteinfiles.append(t)
+                    proteinnames .append(name)
+                else:
+                    logging.info("Could not predict proteins for bin %s" % name)
+
+        diamonddir = os.path.join(outdir, "diamond", "step_2")
+        create_dir(diamonddir)
+        logging.info("Predicting the lineage")
+        dmnd = multidiamond(proteinfiles, proteinnames, diamonddir, db = db, ncores = ncores)
+        logging.debug("Ran diamond and inferred lineages")
         lineagefile = os.path.join(self.outdir, "lineages.tsv")
         write_lngs(dmnd.lngs, lineagefile)
-
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate completeness and contamination of a MAG.")
@@ -179,7 +243,7 @@ def main():
     parser.add_argument("--noclean", dest="noclean", default = True, action="store_false",required=False, help = "GeneMark-ES needs clean fasta headers and will fail if you dont proveide them. Set this flag if you don't want pygmes to clean your headers")
     parser.add_argument("--ncores", "-n", type=int, required=False, default = 1,
             help="Number of threads to use with GeneMark-ES and Diamond")
-    parser.add_argument("--meta", dest="meta", action = "store_true", default="False", help = "Run in metaegnomic mode")
+    parser.add_argument("--meta", dest="meta", action = "store_true", default=False, help = "Run in metaegnomic mode")
     parser.add_argument(
         "--quiet", "-q", dest="quiet", action="store_true", default=False, help="Silcence most output",
     )
