@@ -97,6 +97,7 @@ class diamond:
             logging.debug("AT: %s" %  outfile)
 
     def sample(self, output, n=200):
+        logging.debug("Sampeling %d proteins from %s" % (n, self.faa))
         try:
             faa = Fasta(self.faa)
         except ZeroDivisionError:
@@ -172,6 +173,7 @@ class multidiamond(diamond):
         self.lngs = self.vote_bins(self.result)
 
     def sample(self, fasta, name, output, n=200):
+        logging.debug("Sampeling %d proteins from %s" % (n, fasta))
         try:
             faa = Fasta(fasta)
         except ZeroDivisionError:

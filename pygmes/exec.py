@@ -53,6 +53,7 @@ class gmes:
         failpath = os.path.join(self.outdir, "tried_already")
         if os.path.exists(failpath):
             logging.info("Self-training skipped, as we did this before and it failed")
+            self.gtf2faa()
             return
         if os.path.exists(self.gtf):
             logging.info("GTF file already exists, skipping")
@@ -119,14 +120,16 @@ class gmes:
             return
         if os.path.exists(self.protfaa):
             logging.info("Protein file already exists, skipping")
-            return
-        try:
-            with open(self.loggtf, "a") as fout:
-                subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
-                            stdout = fout, stderr = fout)
-        except subprocess.CalledProcessError:
-            logging.warning("could not get proteins from gtf")
-    
+        else:
+            try:
+                with open(self.loggtf, "a") as fout:
+                    subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
+                                stdout = fout, stderr = fout)
+            except subprocess.CalledProcessError:
+                logging.warning("could not get proteins from gtf")
+        # rename the proteins, to be compatibale with CAT
+        self.rename_for_CAT()
+
     def parse_gtf(self, gtf):
         """Given a gtf file from genemark es it extracts 
         some information to create a bed file"""
@@ -188,7 +191,10 @@ class gmes:
             eg:
                 >NODE_1_1
         """
-        self.protfaa_cat = os.path.join(self.outdir, "prot_faa_CAT.faa")
+        self.finalfaa = os.path.join(self.outdir, "prot_final.faa")
+        if os.path.exists(self.finalfaa):
+            logging.debug("Renamed faa exists, skipping")
+            return
         if faa is None:
             faa = self.protfaa
         if gtf is None:
@@ -198,7 +204,7 @@ class gmes:
         beds = self.parse_gtf(gtf)
         orfcounter = defaultdict(int)
         # parse and rename
-        with open(self.protfaa_cat, "w") as fout:
+        with open(self.finalfaa, "w") as fout:
             for record in faa:
                 if record.name not in beds.keys():
                     logging.warning("The protein was not found in the gtf file:")
@@ -211,18 +217,16 @@ class gmes:
                 # we use 1 as the first number, instead of the cool 0
                 newprotname = "{}_ORF{}".format(contig, orfcounter[contig])
                 fout.write(">{}\n{}\n".format(newprotname, record))
-        
-
 
     def check_success(self):
         if not os.path.exists(self.gtf):
             return False
-        if not os.path.exists(self.protfaa):
+        if not os.path.exists(self.finalfaa):
             return False
 
         # now more in detail
         # check if proteins are empty maybe
-        with open(self.protfaa) as fa:
+        with open(self.finalfaa) as fa:
             j = 1
             for line in fa:
                 if j == 0:
@@ -236,8 +240,6 @@ class gmes:
         self.selftraining()
         if self.check_success():
             logging.info("Ran GeneMark-ES successfully")
-            self.finalfaa = self.protfaa
-            self.finalgtf = self.gtf
             # predict the lng now
             logging.info("Predicting the lng now")
             self.estimate_tax(diamonddb)
@@ -259,8 +261,7 @@ class gmes:
                 print_lngs(self.modelinfomap[self.bestpremodel.modelname],
                            self.premodeltax)
                 # set the final values of of the protein prediction step
-                self.finalfaa = self.bestpremodel.protfaa
-                self.finalgtf = self.bestpremodel.gtf
+                self.finalfaa = self.bestpremodel.finalfaa
                 self.tax = self.bestpremodel.tax
             # self.prediction()
 
