@@ -256,7 +256,7 @@ class metapygmes(pygmes):
             # predictins
             for name, g in gmesm.items():
                 # if Gmes and prodigal worked
-                if g.suceed and g.prodigal.check_success():
+                if g.succeed and g.prodigal.check_success():
                     outfile = os.path.join(g.outdir,"hybrid_gmes_prodigla.faa")
                     faa_hybrid = zip_faa(g.finalfaa, g.prodigal.faa, outfile)
                     # todog.finalfaa
