@@ -6,6 +6,7 @@ from pygmes.diamond import multidiamond
 import shutil
 import gzip
 from glob import glob
+from pyfaidx import Fasta
 import pygmes.version  as version
 from pygmes.exec import create_dir
 from pygmes.printlngs import write_lngs
@@ -16,6 +17,101 @@ MODELS_PATH = os.path.join(this_dir, "data", "models")
 
 
 
+class bin:
+    def __init__(self, path, outdir):
+        self.fasta = os.path.abspath(path)
+        self.name = os.path.basename(path)
+        self.outdir = os.path.join(os.path.abspath(outdir), self.name)
+        create_dir(self.outdir)
+        self.hybridfaa = None
+    
+    def get_best_faa(self):
+        if self.kingdom is not None and self.kingdom in ["bacteria", "archaea"]:
+            if self.prodigal.check_success():
+                return(self.prodigal.faa, self.name, "prodigal")
+        elif self.gmes.check_success():
+            # check if we made a hybrid
+            if self.hybridfaa is not None and os.path.exists(self.hybridfaa):
+                return(self.hybridfaa, self.name, "hybrid")
+            else:
+                return(self.gmes.finalfaa, self.name, "GeneMark-ES")
+        # default to none, as we dont have proteins it seems
+        logging.debug("No final faa for bin: %s" % self.name)
+        return(None, self.name, None)
+
+    def gmes_training(self, ncores = 1):
+        outdir = os.path.join(self.outdir, "gmes_training")
+        self.gmes = gmes(self.fasta, outdir, ncores)
+        self.gmes.selftraining()
+    
+    def run_prodigal(self, ncores = 1, outdir=None):
+        if outdir is None:
+            outdir = os.path.join(self.outdir, "prodigal")
+            create_dir(outdir)
+        self.prodigal = prodigal(self.fasta,  outdir, ncores)
+
+    def make_hybrid_faa(self, gmesfirst = True):
+        logging.debug("Making a hybrid of bin %s" % self.name)
+        try:
+            if not self.gmes.check_success() or not self.prodigal.check_success():
+                return
+        except AttributeError:
+            return
+        outdir = os.path.join(self.outdir, "hybrid")
+        create_dir(outdir)
+        self.hybridfaa = os.path.join(outdir, "gmes_prodigal_merged.faa")
+
+        def sane_faa(faa):
+            if os.stat(faa).st_size == 0:
+                return False
+            try:
+                fa = Fasta(faa)
+                if len(fa.keys()) > 0:
+                    return fa
+                return False
+            except Exception as e:
+                print(e)
+                logging.debug("Fasta has no entries: %s" % faa)
+                return False
+        def getchroms(fa):
+            contigs = set()
+            for seq in fa:
+                cn = seq.name.split()[0]
+                l = cn.split("_")
+                chrom = "".join(l[0:-1])
+                contigs.add(chrom)
+            return contigs
+
+        if gmesfirst:
+            faa1 = self.gmes.finalfaa
+            faa2 = self.prodigal.faa
+        else:
+            faa2 = self.gmes.finalfaa
+            faa1 = self.prodigal.faa
+        # load and check for valid fastas
+        fa1  = sane_faa(faa1)
+        fa2  = sane_faa(faa2)
+        if fa1 is False or fa2 is False:
+            return faa1
+
+        # find contigs uniqly annotated in faa2
+        contigs1 = getchroms(fa1)
+        contigs2 = getchroms(fa2)
+        leftover = contigs2 - contigs1
+        if len(leftover) > 0:
+            logging.debug("We found possible bacterial proteins in this proteome")
+            # write prot from fa1
+            with open(self.hybridfaa, "w") as fout:
+                for seq in fa1:
+                    fout.write(f">{seq.name}\n{seq}\n")
+                # add new from fa2
+                for seq in fa2:
+                    cn = seq.name.split()[0]
+                    l = cn.split("_")
+                    chrom = "".join(l[0:-1])
+                    # write to file
+                    if chrom in leftover:
+                        fout.write(f">{seq.name}\n{seq}\n")
 
 class pygmes:
     """
@@ -117,185 +213,175 @@ class metapygmes(pygmes):
         fna = glob(os.path.join(bindir, "*.fna"))
         fasta = glob(os.path.join(bindir, "*.fasta"))
         files = fa + fna + fasta
+        prodigaldir = os.path.join(self.outdir, "prodigal")
         # convert all files to absolute paths
         files = [os.path.abspath(f) for f in files]
         names = [os.path.basename(f) for f  in files]
-        outdirs = [os.path.join(outdir, "gmes", name) for name in names]
-        proteinfiles = []
-        proteinnames = []
+        if len(names) != len(set(names)):
+            logging.warning("Bin files need to have unique names")
+            exit(1)
+
+        #outdirs = [os.path.join(outdir, name) for name in names]
+        #proteinfiles = []
+        #proteinnames = []
         # if needed, we clean the fasta files
+    
         if clean:
-            files = [self.clean_fasta(f, o) for f,o in zip(files, outdirs) ]
+            logging.info("Cleaning input fastas")
+            cleanfastadir = os.path.join(outdir, "fasta_clean")
+            files = [self.clean_fasta(f, cleanfastadir) for f in files ]
 
-        # SELF-TRAINING
-        gmesm = {}
-        for path, tdir, name in zip(files, outdirs, names):
-            gmesm[name] = gmes(path, tdir, ncores)
-            gmesm[name].selftraining()
-            gmesm[name].succeed = gmesm[name].check_success()
 
-        # PREDICTION WITH LEARNED MODELS
+        # bin list to keep all the bins and handle all the operations
+        binlst = []
+        bindirs = os.path.join(outdir, "bins")
+        for path in files:
+            binlst.append(bin(path, bindirs))
 
-        # Copy models into one location, so its easy to reuse
-        modeldir = os.path.join(outdir, "1_models")
-        create_dir(modeldir)
-        nmodels = 0
-        for name, g  in gmesm.items():
-            if g.succeed:
-                logging.debug("For bin %s we set finalfaa: %s" %(name, g.finalfaa))
-                proteinfiles.append(g.finalfaa)
-                proteinnames.append(name)
-                # look for the model file and if present copy into the model directory
-                expectedmodel = os.path.join(g.outdir, "output","gmhmm.mod")
-                if os.path.exists(expectedmodel):
-                    shutil.copy(expectedmodel, os.path.join(modeldir, "{}.mod".format(name)))
-                    nmodels += 1
-
-        # now for each bin which we did not predict yet, we use the models from the dir
-        if nmodels == 0:
-            logging.warning("Could create models for a single bin. Thus we stop here")
-            exit(0)
-
-        # run step 2 of using the models
-        for name, g in gmesm.items():
-            if not g.succeed:
-                g.premodel(modeldir)
-                if g.bestpremodel is not False and  g.bestpremodel.check_success():
-                    g.finalfaa = g.bestpremodel.finalfaa
-                    logging.debug("For bin %s we set finalfaa: %s" %(name, g.finalfaa))
-                    shutil.copy(g.bestpremodel.finalfaa, g.outdir)
-                    shutil.copy(g.bestpremodel.gtf, g.outdir)
-                    g.succeed = True
-                    proteinfiles.append(g.finalfaa)
-                    proteinnames.append(name)
-
+        # run prodigal
+        logging.info("Running prodigal on all bins")
+        for b in binlst:
+            b.run_prodigal(ncores = ncores)
+        
+        # now we can already get a first lineage estimation
         # diamond is faster when using more sequences
         # thus we pool all fasta together and seperate them afterwards
         diamonddir = os.path.join(outdir, "diamond", "step_1")
         create_dir(diamonddir)
         logging.info("Predicting the lineage")
-        print(proteinfiles)
-        dmnd = multidiamond(proteinfiles, proteinnames, diamonddir, db = db, ncores = ncores)
+        proteinfiles = [b.prodigal.faa for b in binlst if b.prodigal.check_success()]
+        proteinnames = [b.name for b in binlst if b.prodigal.check_success()]
+        dmnd_1 = multidiamond(proteinfiles, proteinnames, diamonddir, db = db, ncores = ncores)
         logging.debug("Ran diamond and inferred lineages")
-        #lineagefile = os.path.join(self.outdir, "lineages.tsv")
-        #write_lngs(dmnd.lngs, lineagefile)
-        # now we know which mags are eukayotic
-        # we could now run prodigal for all non eukayotic bins to see
-        # if we can improve the proteinpreidction
-        prodigaldir = os.path.join(self.outdir, "prodigal")
-        create_dir(prodigaldir)
-        logging.info("Trying prodigal for failed and non eukaryotic bins")
-        for name, g in gmesm.items():
-            g.try_prodigal = False
-            if name not in dmnd.lngs.keys():
+        # assign a taxonomic kingdom based on the first lineage estimation
+        anyeuks = False
+        for b in binlst:
+            b.first_lng_estimation = None
+            b.kingdom = None
+            if b.name in dmnd_1.lngs.keys():
                 # as no lng was infered for this bin, we could try prodigal
-                g.try_prodigal = True
-            elif fill_bac_gaps:
-                # even for eukaryotes and everyone else, we will try to annotate 
-                # prokaryotic genes, to fill in contigs with missing data
-                g.try_prodigal = True
-            else:
-                # if bin was not classified as eukaryotic we try prodigal
-                if 2759 not in dmnd.lngs[name]['lng']:
-                    g.try_prodigal = True
-            if g.try_prodigal:
-               g.prodigaldir = os.path.join(prodigaldir, name)
-               create_dir(g.prodigaldir)
-               g.prodigal = prodigal(g.fasta,  g.prodigaldir, ncores)
-            
-        if fill_bac_gaps:
-            logging.info("Will try to see if prodigal found proteins on contigs that GeneMark-ES missed")
-            def zip_faa(faa1, faa2, outfile):
-                def sane_faa(faa):
-                    if os.stat(faa).st_size == 0:
-                        return False
-                    try:
-                        fa = Fasta(faa)
-                        if len(fa) > 0:
-                            return fa
-                        return False
-                    except:
-                        return False
-                def getchroms(fa):
-                    contigs = set()
-                    for seq in fa:
-                        cn = seq.name.split()[0]
-                        l = cn.split("_")
-                        chrom = "".join(l[0:-1])
-                        contigs.add(chrom)
-                    return contigs
-                # load and check for valid fastas
-                fa1  = sane_faa(faa1)
-                fa2  = sane_faa(faa2)
-                if fa is False or fa2 is False:
-                    return faa1
-                # find contigs uniqly annotated in faa2
-                contigs1 = getchroms(fa1)
-                contigs2 = getchroms(fa2)
-                leftover = contigs2 - contigs1
-                if len(leftover) > 0:
-                    logging.debug("We found possible bacterial proteins in this proteome")
-                    # write prot from fa1
-                    with open(outfile, "w") as fout:
-                        for seq in fa1:
-                            fout.write(f">{seq.name}\n{seq}\n")
-                        # add new from fa2
-                        for seq in fa2:
-                            cn = seq.name.split()[0]
-                            l = cn.split("_")
-                            chrom = "".join(l[0:-1])
-                            # write to file
-                            if chrom in leftover:
-                                fout.write(f">{seq.name}\n{seq}\n")
-                    return outfile
+                b.first_lng_estimation = dmnd_1.lngs[b.name]
+                if 2 in b.first_lng_estimation['lng']:
+                    b.kingdom = "bacteria"
+                elif 2759 in b.first_lng_estimation['lng']:
+                    b.kingdom = "eukaryote"
+                    anyeuks = True
+                elif 2157 in b.first_lng_estimation['lng']:
+                    b.kingdom = "archaea"
                 else:
-                    return faa1
+                    anyeuks = True
 
-            # some eukaryotic bins might contain single or multiple
-            # bac contigs, we by comparing prodigal to GeneMark-ES proteome
-            # predictins
-            for name, g in gmesm.items():
-                # if Gmes and prodigal worked
-                if g.succeed and g.prodigal.check_success():
-                    outfile = os.path.join(g.outdir,"hybrid_gmes_prodigla.faa")
-                    faa_hybrid = zip_faa(g.finalfaa, g.prodigal.faa, outfile)
-                    # todog.finalfaa
-                    if faa_hybrid != outfile:
-                        g.finalfaa = faa_hybrid
+        if anyeuks == False:
+            logging.info("All bins are prokaryotes, we can skip the GeneMark-ES steps")
+        else:
+            # for all bins that are euakryotic or could not be assigned a lineage,
+            # we try GeneMark-ES in a two step mode
+            modeldir = os.path.join(outdir, "gmes_models")
+            create_dir(modeldir)
+            nmodels = 0
+            logging.info("Running GeneMark-ES in self training")
+            for b in binlst:
+                if b.kingdom is None or b.kingdom == "eukaryote":
+                    # run self training
+                    b.gmes_training()
+                    expectedmodel = os.path.join(b.gmes.outdir, "output","gmhmm.mod")
+                    if os.path.exists(expectedmodel):
+                        shutil.copy(expectedmodel, os.path.join(modeldir, "{}.mod".format(b.name)))
+                        nmodels += 1
+            # check if any bins were not predicted, if so we can use the models
+            # from other bins to get a better estimate
+            # if thats not possible, we could still run pygmes in non metagenomic 
+            # on each bin, but that should be decied by the user
+            if nmodels == 0:
+                logging.debug("No models were successfully trained")
+            else:
+                for b in binlst:
+                    if b.kingdom is None or b.kingdom == "eukaryote":
+                        if b.gmes.check_success() is False:
+                            b.gmes.premodel(modeldir)
+                            # if successfull, overwrite the gmes, with the successfull gmes
+                            if b.gmes.bestpremodel is not False and b.gmes.bestpremodel.check_success():
+                                b.gmes = b.gmes.bestpremodel
+            # now we have proteins predicted for all
+            # we can now give each bin the chance to merge prodigal and Gmes predictions
+            for b in binlst:
+                b.make_hybrid_faa()
 
-        # summarise the final result
-        finaloutdir = os.path.join(self.outdir, "hybridpredicted")
+            # now we update the lineages using the new proteins
+            # and then we can create a final set of protein files
+            diamonddir = os.path.join(outdir, "diamond", "step_2")
+            create_dir(diamonddir)
+            proteinfiles = []
+            proteinnames = []
+            for b in binlst:
+                path, name, software = b.get_best_faa()
+                if path is not None and b.kingdom not in ["bacteria", "archaea"]:
+                    proteinfiles.append(path)
+                    proteinnames.append(name)
+            if len(proteinfiles) > 0:
+                logging.info("Predicting the lineage using the results from GeneMark-ES")
+                dmnd_2 = multidiamond(proteinfiles, proteinnames, diamonddir, db = db, ncores = ncores)
+                for b in binlst:
+                    if b.name in dmnd_2.lngs.keys():
+                        # as no lng was infered for this bin, we could try prodigal
+                        b.first_lng_estimation = dmnd_2.lngs[b.name]
+                        if 2 in b.first_lng_estimation['lng']:
+                            b.kingdom = "bacteria"
+                        elif 2759 in b.first_lng_estimation['lng']:
+                            b.kingdom = "eukaryote"
+                        elif 2157 in b.first_lng_estimation['lng']:
+                            b.kingdom = "archaea"
+            else:
+                logging.info("No changes after applying GeneMark-ES")
+
+        # now we can make a final FAA folder:
+        finaloutdir = os.path.join(self.outdir, "predicted_proteomes")
         create_dir(finaloutdir)
-        proteinfiles  = []
-        proteinnames = []
-        for name, g in gmesm.items():
-            logging.debug("Copy final files: %s" % name)
-            t =  os.path.join(finaloutdir, "{}.faa".format(name))
-            if not g.try_prodigal:
-                # all likely eukryotic bins
-                print(f"cp {g.finalfaa} {t}")
-                if g.succeed or (g.bestpremodel is not False and  g.bestpremodel.check_success()):
-                    shutil.copy2(g.finalfaa, t)
-                    proteinfiles.append(t)
-                    proteinnames .append(name)
-                else:
-                    logging.info("Could not predict proteins for bin %s" % name)
-            else:
-                # all possible bacterial bins
-                if os.path.exists(g.prodigal.faa) and g.check_success():
-                    shutil.copy2(g.prodigal.faa, t)
-                    proteinfiles.append(t)
-                    proteinnames .append(name)
-                else:
-                    logging.info("Could not predict proteins for bin %s" % name)
+        lngs = {}
+        metadataf = os.path.join(self.outdir, "metadata.tsv")
+        metadata = {}
+        for b in binlst:
+            t =  os.path.join(finaloutdir, "{}.faa".format(b.name))
+            path, name, software = b.get_best_faa()
+            b.software = software
+            metadata[b.name] = {"path": path, 
+                             "software": software, 
+                             "nprot": None,
+                             "lng": [],
+                             "name": b.name}
+            if path is not None:
+                shutil.copy(path, t)
+                metadata[b.name]['path'] = t
+                try:
+                    fa = Fasta(t)
+                    metadata[b.name]['nprot'] = len(fa.keys())
+                except Exception as e:
+                    print(e)
+                    metadata[b.name]['nprot'] = 0
+            if b.first_lng_estimation is not None:
+                lngs[b.name] = {}
+                lngs[b.name]['lng'] = b.first_lng_estimation['lng']
+                lngs[b.name]['n'] = b.first_lng_estimation['n']
+                metadata[b.name]['lng'] = "-".join([str(x) for x in b.first_lng_estimation['lng']])
+        logging.debug("Copied files, now writing lineages")
+        lngfile = os.path.join(outdir, "lineages.tsv")
+        write_lngs(lngs, lngfile)
+        # write metadata to disk
+        logging.debug("Writing metadata")
+        with open(metadataf, "w") as fout:
+            keys = ['name', "path", "software", "nprot", "lng"] 
+            fout.write("\t".join(keys))
+            fout.write("\n")
+            for k,v in metadata.items():
+                l = []
+                for key in keys:
+                    l.append(str(v[key]))
+                fout.write("\t".join(l))
+                fout.write("\n")
 
-        diamonddir = os.path.join(outdir, "diamond", "step_2")
-        create_dir(diamonddir)
-        logging.info("Predicting the lineage")
-        dmnd = multidiamond(proteinfiles, proteinnames, diamonddir, db = db, ncores = ncores)
-        logging.debug("Ran diamond and inferred lineages")
-        lineagefile = os.path.join(self.outdir, "lineages.tsv")
-        write_lngs(dmnd.lngs, lineagefile)
+
+        logging.info("Successfully ran pygmes --meta")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate completeness and contamination of a MAG.")

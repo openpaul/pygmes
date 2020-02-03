@@ -24,7 +24,7 @@ class prodigal:
                     subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
                                 stdout = fout, stderr = fout)
             else:
-                logging.info("Prodigal output already exists")
+                logging.debug("Prodigal output already exists")
         except Exception as e:
             logging.warning("Prodigal failed on this bin")
         return(faa)

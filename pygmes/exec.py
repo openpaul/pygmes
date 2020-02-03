@@ -4,6 +4,7 @@ import subprocess
 import glob
 import re
 from pyfaidx import Fasta
+from pyfaidx import FastaIndexingError
 from random import sample
 from collections import defaultdict
 from pygmes.diamond import diamond
@@ -199,7 +200,10 @@ class gmes:
             faa = self.protfaa
         if gtf is None:
             gtf = self.gtf
-        faa = Fasta(faa)
+        try:
+            faa = Fasta(faa)
+        except FastaIndexingError:
+            return
         # load gtf
         beds = self.parse_gtf(gtf)
         orfcounter = defaultdict(int)
@@ -219,6 +223,8 @@ class gmes:
                 fout.write(">{}\n{}\n".format(newprotname, record))
 
     def check_success(self):
+        if self.finalfaa is False:
+            return False
         if not os.path.exists(self.gtf):
             return False
         if not os.path.exists(self.finalfaa):
@@ -272,6 +278,7 @@ class gmes:
         self.tax = d.lineage
 
     def premodel(self, models, stage=1):
+        logging.debug("On bin: %s" % self.fasta)
         logging.debug("Running the pre Model stage %d" % stage)
         logging.debug("Using model directory: %s", models)
         self.bestpremodel = False
