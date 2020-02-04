@@ -340,6 +340,7 @@ class metapygmes(pygmes):
         lngs = {}
         metadataf = os.path.join(self.outdir, "metadata.tsv")
         metadata = {}
+        finalfaas = {}
         for b in binlst:
             t =  os.path.join(finaloutdir, "{}.faa".format(b.name))
             path, name, software = b.get_best_faa()
@@ -352,6 +353,7 @@ class metapygmes(pygmes):
             if path is not None:
                 shutil.copy(path, t)
                 metadata[b.name]['path'] = t
+                finalfaas[b.name] = {"faa": t, "fasta": b.fasta}
                 try:
                     fa = Fasta(t)
                     metadata[b.name]['nprot'] = len(fa.keys())
@@ -378,6 +380,34 @@ class metapygmes(pygmes):
                     l.append(str(v[key]))
                 fout.write("\t".join(l))
                 fout.write("\n")
+        
+        # make a single file for CAT, including a prefix so CAT will not get confused
+        def single_fasta(fastas, names, output, sep = "-binsep-"):
+            if len(fastas) != len(names):
+                logging.warning("Number of Fastas does not match names")
+                exit(1)
+            with open (output, "w") as fout:
+                for fasta, name in zip(fastas, names):
+                    with open(fasta) as fin:
+                        for line in fin:
+                            if line.startswith(">"):
+                                line = line.strip().split()[0][1:]
+                                line = ">{}{}{}\n".format(name, sep, line)
+                            fout.write(line)
+        
+        # make massive protein file:
+        catdir = os.path.join(outdir, "CAT")
+        create_dir(catdir)
+        catfaa = os.path.join(catdir, "cat.faa")
+        catfna = os.path.join(catdir, "cat.fna")
+        names = list(finalfaas.keys())
+        names.sort()
+        faas = [finalfaas[name]['faa'] for name in names]
+        fnas = [finalfaas[name]['fasta'] for name in names]
+        single_fasta(fnas, names, catfna)
+        single_fasta(faas, names, catfaa)
+
+
 
 
         logging.info("Successfully ran pygmes --meta")
