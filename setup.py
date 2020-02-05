@@ -17,7 +17,7 @@ setuptools.setup(
     url="",
     py_modules=["api"],
     entry_points={"console_scripts": ["pygmes = pygmes.api:main"]},
-    install_requires=["ete3", "pyfaidx"],
+    install_requires=["ete3", "pyfaidx>=0.5.8"],
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
