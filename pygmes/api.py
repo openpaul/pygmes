@@ -283,7 +283,7 @@ class metapygmes(pygmes):
             for b in binlst:
                 if b.kingdom is None or b.kingdom == "eukaryote":
                     # run self training
-                    b.gmes_training()
+                    b.gmes_training(ncores = ncores)
                     expectedmodel = os.path.join(b.gmes.outdir, "output","gmhmm.mod")
                     if os.path.exists(expectedmodel):
                         shutil.copy(expectedmodel, os.path.join(modeldir, "{}.mod".format(b.name)))
