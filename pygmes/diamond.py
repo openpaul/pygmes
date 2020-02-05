@@ -47,6 +47,8 @@ class diamond:
         self.outfile = os.path.join(self.outdir, "diamond.results.tsv")
         self.log = os.path.join(self.outdir, "diamond.log")
         self.lineages = {}
+        if ncores == 1:
+            logging.warning("You are running Diamond with a single core. This will be slow. We recommend using 8-16 cores.")
         # sample n proteins
         logging.info("Subsampeling %d proteins" % sample)
         self.samplefile = os.path.join(self.outdir, "diamond.query.faa")
@@ -161,6 +163,8 @@ class multidiamond(diamond):
         self.db = db
         self.ncores = ncores
         self.lineages = {}
+        if ncores == 1:
+            logging.warning("You are running Diamond with a single core. This will be slow. We recommend using 8-16 cores.")
         # sample
         with open(self.samplefile, "w") as f:
             f.write("")

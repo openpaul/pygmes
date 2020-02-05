@@ -49,6 +49,8 @@ class gmes:
         self.finalgtf = False
         self.tax = []
         self.modelinfomap = {}
+        if ncores == 1:
+            logging.warning("You are running GeneMark-ES with a single core. This will be slow. We recommend using 8-16 cores.")
 
     def selftraining(self):
         failpath = os.path.join(self.outdir, "tried_already")
