@@ -10,6 +10,7 @@ from collections import defaultdict
 from pygmes.diamond import diamond
 from pygmes.printlngs import print_lngs
 from ete3 import NCBITaxa
+import shutil
 
 ncbi = NCBITaxa()
 
@@ -26,6 +27,14 @@ def create_dir(d):
             logging.warning(f"Could not create dir: {d}\n{e}")
 
 
+def delete_folder(d):
+    if os.path.exists(d):
+        if os.path.isdir(d):
+            try:
+                shutil.rmtree(d)
+            except Exception as e:
+                logging.warning("Could not delete folder: %s" % d)
+                print(e)
 
 def touch(fname, mode=0o666, dir_fd=None, **kwargs):
     flags = os.O_CREAT | os.O_APPEND
@@ -47,6 +56,7 @@ class gmes:
         self.protfaa = os.path.join(self.outdir, "prot_seq.faa")
         self.finalfaa = False
         self.finalgtf = False
+        self.bedfile = False
         self.tax = []
         self.modelinfomap = {}
         if ncores == 1:
@@ -83,7 +93,18 @@ class gmes:
         except subprocess.CalledProcessError:
             touch(failpath)
             logging.info("GeneMark-ES in self-training mode has failed")
+        # predict and then clean
         self.gtf2faa()
+        self.clean_gmes_files()
+
+    def clean_gmes_files(self):
+        # clean if there are files to clean
+        # this just keeps the foodprint lower
+        rmfolders = ['run', 'info', 'data', 'output/data', 'output/gmhmm']
+        for folder in rmfolders:
+            p = os.path.join(self.outdir, folder)
+            delete_folder(p)
+
 
     def prediction(self, model):
         self.model = model
@@ -93,7 +114,7 @@ class gmes:
             logging.info("Prediction skipped, as we did this before and it failed")
             return
         if os.path.exists(self.gtf):
-            logging.info("GTF file already exists, skipping")
+            logging.debug("GTF file already exists, skipping")
             self.gtf2faa()
             return
         logging.debug("Starting prediction")
@@ -114,15 +135,17 @@ class gmes:
         except subprocess.CalledProcessError:
             logging.info("GeneMark-ES in prediction mode has failed")
             touch(failpath)
+        # predict and then clean
         self.gtf2faa()
+        self.clean_gmes_files()
 
     def gtf2faa(self):
         lst = ["get_sequence_from_GTF.pl", "genemark.gtf", self.fasta]
         if not os.path.exists(self.gtf):
-            logging.warning("There is no GTF file")
+            logging.debug("There is no GTF file")
             return
         if os.path.exists(self.protfaa):
-            logging.info("Protein file already exists, skipping")
+            logging.debug("Protein file already exists, skipping")
         else:
             try:
                 with open(self.loggtf, "a") as fout:
@@ -131,6 +154,7 @@ class gmes:
             except subprocess.CalledProcessError:
                 logging.warning("could not get proteins from gtf")
         # rename the proteins, to be compatibale with CAT
+        #self.gtf2bed(self.gtf, self.bedfile)
         self.rename_for_CAT()
 
     def parse_gtf(self, gtf):
@@ -166,7 +190,7 @@ class gmes:
                 beds[name]["strand"] = l[6]
         return beds
 
-    def gtf2bed(self, gtf, outfile):
+    def gtf2bed(self, gtf, outfile, rename = None, beds = None):
         """
         given a faa file and a gtf(genemark-es format)
         we will be able to create a bed file, which can be used 
@@ -178,10 +202,13 @@ class gmes:
 
 
         # load gtf
-        beds = self.parse_gtf(gtf)
+        if beds is None:
+            beds = self.parse_gtf(gtf)
         # write to file
         with open(outfile, "w") as f:
             for name, v in beds.items():
+                if rename is not None:
+                    name = rename[name]
                 vals = "\t".join([v["chrom"], str(min(v["r"])), str(max(v["r"])), v['strand'], name])
                 f.write("{}\n".format(vals))
         
@@ -195,7 +222,8 @@ class gmes:
                 >NODE_1_1
         """
         self.finalfaa = os.path.join(self.outdir, "prot_final.faa")
-        if os.path.exists(self.finalfaa):
+        self.bedfile = os.path.join(self.outdir, "proteins.bed")
+        if os.path.exists(self.finalfaa) and os.path.exists(self.bedfile):
             logging.debug("Renamed faa exists, skipping")
             return
         if faa is None:
@@ -206,9 +234,15 @@ class gmes:
             faa = Fasta(faa)
         except FastaIndexingError:
             return
+        except Exception as e:
+            logging.debug("Unhandled pyfaidx Fasta error")
+            print(e)
+            return
         # load gtf
         beds = self.parse_gtf(gtf)
         orfcounter = defaultdict(int)
+        # keep track of the renaming, so we can rename the bed
+        renamed = {}
         # parse and rename
         with open(self.finalfaa, "w") as fout:
             for record in faa:
@@ -222,7 +256,11 @@ class gmes:
                 orfcounter[contig] += 1
                 # we use 1 as the first number, instead of the cool 0
                 newprotname = "{}_ORF{}".format(contig, orfcounter[contig])
+                # keep track of the renaming, so we can rename the bed
+                renamed[record.name] = newprotname
                 fout.write(">{}\n{}\n".format(newprotname, record))
+        # write renamed bed
+        self.gtf2bed(self.gtf, self.bedfile, renamed, beds)
 
     def check_success(self):
         if self.finalfaa is False:
@@ -270,6 +308,7 @@ class gmes:
                            self.premodeltax)
                 # set the final values of of the protein prediction step
                 self.finalfaa = self.bestpremodel.finalfaa
+                self.bedfile = self.bestpremodel.bedfile
                 self.tax = self.bestpremodel.tax
             # self.prediction()
 

@@ -29,7 +29,7 @@ class bin:
         if self.kingdom is not None and self.kingdom in ["bacteria", "archaea"]:
             if self.prodigal.check_success():
                 return(self.prodigal.faa, self.name, "prodigal")
-        elif self.gmes.check_success():
+        elif  hasattr(self, 'gmes') and self.gmes.check_success():
             # check if we made a hybrid
             if self.hybridfaa is not None and os.path.exists(self.hybridfaa):
                 return(self.hybridfaa, self.name, "hybrid")
@@ -147,9 +147,13 @@ class pygmes:
         if g.finalfaa:
             logging.debug("Copying final faa from: %s" % g.finalfaa)
             shutil.copy(g.finalfaa, os.path.join(self.outdir, "predicted_proteins.faa"))
-            g.gtf2bed(g.finalgtf, os.path.join(self.outdir, "predicted_proteins.bed"))
             g.writetax()
-        
+        if g.bedfile:
+            shutil.copy(g.bedfile, os.path.join(self.outdir, "predicted_proteins.bed"))
+        else:
+            logging.debug("Could not find bed file")
+        print(g.bedfile)
+
     def clean_fasta(self, fastaIn, folder):
         create_dir(folder)
         name = os.path.basename(fastaIn)
@@ -382,10 +386,11 @@ class metapygmes(pygmes):
                 fout.write("\n")
         
         # make a single file for CAT, including a prefix so CAT will not get confused
-        def single_fasta(fastas, names, output, sep = "-binsep-"):
+        def single_fasta(fastas, names, output, sep = "_"):
             if len(fastas) != len(names):
                 logging.warning("Number of Fastas does not match names")
                 exit(1)
+            nseqs = 0
             with open (output, "w") as fout:
                 for fasta, name in zip(fastas, names):
                     with open(fasta) as fin:
@@ -393,7 +398,11 @@ class metapygmes(pygmes):
                             if line.startswith(">"):
                                 line = line.strip().split()[0][1:]
                                 line = ">{}{}{}\n".format(name, sep, line)
+                                nseqs += 1
                             fout.write(line)
+            if nseqs == 0:
+                logging.warning("No sequence in aggregate")
+                exit(1)
         
         # make massive protein file:
         catdir = os.path.join(outdir, "CAT")
