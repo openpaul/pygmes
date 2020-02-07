@@ -66,7 +66,7 @@ class diamond:
         logging.debug("Finished the diamond step")
 
     def search(self, outfile, query):
-        if not os.path.exists(outfile):
+        if not os.path.exists(outfile) or os.stat(outfile).st_size == 0:
             logging.info("Running diamond now")
             lst = [
                 "diamond",
@@ -94,6 +94,7 @@ class diamond:
             ]
             with open(self.log , "w") as fout:
                 subprocess.run(lst, stderr = fout, stdout = fout)
+            logging.debug("Ran diamond")
         else:
             logging.info("Diamond output already exists ")
             logging.debug("AT: %s" %  outfile)
