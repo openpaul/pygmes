@@ -255,7 +255,7 @@ class gmes:
                 contig = beds[record.name]['chrom']
                 orfcounter[contig] += 1
                 # we use 1 as the first number, instead of the cool 0
-                newprotname = "{}_ORF{}".format(contig, orfcounter[contig])
+                newprotname = "{}_{}".format(contig, orfcounter[contig])
                 # keep track of the renaming, so we can rename the bed
                 renamed[record.name] = newprotname
                 fout.write(">{}\n{}\n".format(newprotname, record))
