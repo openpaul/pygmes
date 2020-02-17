@@ -28,16 +28,22 @@ class bin:
     def get_best_faa(self):
         if self.kingdom is not None and self.kingdom in ["bacteria", "archaea"]:
             if self.prodigal.check_success():
-                return(self.prodigal.faa, self.name, "prodigal")
+                return(self.prodigal.faa, self.prodigal.bed, self.name, "prodigal")
         elif  hasattr(self, 'gmes') and self.gmes.check_success():
             # check if we made a hybrid
             if self.hybridfaa is not None and os.path.exists(self.hybridfaa):
-                return(self.hybridfaa, self.name, "hybrid")
+                return(self.hybridfaa, self.hybridbed, self.name, "hybrid")
             else:
-                return(self.gmes.finalfaa, self.name, "GeneMark-ES")
+                return(self.gmes.finalfaa, self.gmes.bedfile, self.name, "GeneMark-ES")
+        elif hasattr(self, "gmes") and not self.gmes.check_success():
+            # this bin is euakryotic maybe, but gmes has failed. 
+            # so we will return the prodigal peptides instead, eeventhough we 
+            # know this might be of low quality
+            if self.prodigal.check_success():
+                return(self.prodigal.faa, self.prodigal.bed, self.name, "prodigal")
         # default to none, as we dont have proteins it seems
         logging.debug("No final faa for bin: %s" % self.name)
-        return(None, self.name, None)
+        return(None, None, self.name, None)
 
     def gmes_training(self, ncores = 1):
         outdir = os.path.join(self.outdir, "gmes_training")
@@ -60,6 +66,7 @@ class bin:
         outdir = os.path.join(self.outdir, "hybrid")
         create_dir(outdir)
         self.hybridfaa = os.path.join(outdir, "gmes_prodigal_merged.faa")
+        self.hybridbed = os.path.join(outdir, "gmes_prodigal_merged.bed")
 
         def sane_faa(faa):
             if os.stat(faa).st_size == 0:
@@ -85,9 +92,13 @@ class bin:
         if gmesfirst:
             faa1 = self.gmes.finalfaa
             faa2 = self.prodigal.faa
+            bed1 = self.gmes.bedfile
+            bed2 = self.prodigal.bed
         else:
             faa2 = self.gmes.finalfaa
             faa1 = self.prodigal.faa
+            bed2 = self.gmes.bedfile
+            bed1 = self.prodigal.bed
         # load and check for valid fastas
         fa1  = sane_faa(faa1)
         fa2  = sane_faa(faa2)
@@ -112,6 +123,14 @@ class bin:
                     # write to file
                     if chrom in leftover:
                         fout.write(f">{seq.name}\n{seq}\n")
+
+            # make a merged bedfile
+            shutil.copy(bed1, self.hybridbed)
+            with open(self.hybridbed, "a") as fout, open(bed2) as fin:
+                for line in fin:
+                    l = line.strip().split()
+                    if l[0] in leftover:
+                        fout.write(line)
 
 class pygmes:
     """
@@ -318,7 +337,7 @@ class metapygmes(pygmes):
             proteinfiles = []
             proteinnames = []
             for b in binlst:
-                path, name, software = b.get_best_faa()
+                path, bedpath, name, software = b.get_best_faa()
                 if path is not None and b.kingdom not in ["bacteria", "archaea"]:
                     proteinfiles.append(path)
                     proteinnames.append(name)
@@ -340,14 +359,17 @@ class metapygmes(pygmes):
 
         # now we can make a final FAA folder:
         finaloutdir = os.path.join(self.outdir, "predicted_proteomes")
+        finalbeddir = os.path.join(finaloutdir, "bed")
         create_dir(finaloutdir)
+        create_dir(finalbeddir)
         lngs = {}
         metadataf = os.path.join(self.outdir, "metadata.tsv")
         metadata = {}
         finalfaas = {}
         for b in binlst:
             t =  os.path.join(finaloutdir, "{}.faa".format(b.name))
-            path, name, software = b.get_best_faa()
+            bt = os.path.join(finalbeddir, "{}.bed".format(b.name))
+            path, bedpath, name, software = b.get_best_faa()
             b.software = software
             metadata[b.name] = {"path": path, 
                              "software": software, 
@@ -356,6 +378,7 @@ class metapygmes(pygmes):
                              "name": b.name}
             if path is not None:
                 shutil.copy(path, t)
+                shutil.copy(bedpath, bt)
                 metadata[b.name]['path'] = t
                 finalfaas[b.name] = {"faa": t, "fasta": b.fasta}
                 try:
