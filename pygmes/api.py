@@ -80,13 +80,16 @@ class bin:
                 print(e)
                 logging.debug("Fasta has no entries: %s" % faa)
                 return False
+
+        def chromname(s):
+            if s.startswith(">"):
+                s = s[1:]
+            return s.strip().split()[0].rsplit("_", 1)[0]
+
         def getchroms(fa):
             contigs = set()
             for seq in fa:
-                cn = seq.name.split()[0]
-                l = cn.split("_")
-                chrom = "".join(l[0:-1])
-                contigs.add(chrom)
+                contigs.add(chromname(seq.name))
             return contigs
 
         if gmesfirst:
@@ -117,19 +120,15 @@ class bin:
                     fout.write(f">{seq.name}\n{seq}\n")
                 # add new from fa2
                 for seq in fa2:
-                    cn = seq.name.split()[0]
-                    l = cn.split("_")
-                    chrom = "".join(l[0:-1])
                     # write to file
-                    if chrom in leftover:
+                    if chromname(seq.name) in leftover:
                         fout.write(f">{seq.name}\n{seq}\n")
 
             # make a merged bedfile
             shutil.copy(bed1, self.hybridbed)
             with open(self.hybridbed, "a") as fout, open(bed2) as fin:
                 for line in fin:
-                    l = line.strip().split()
-                    if l[0] in leftover:
+                    if line.split("\t")[0] in leftover:
                         fout.write(line)
 
 class pygmes:
