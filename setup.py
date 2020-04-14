@@ -15,7 +15,6 @@ setuptools.setup(
     url="https://github.com/openpaul/pygmes",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="",
     py_modules=["api"],
     entry_points={"console_scripts": ["pygmes = pygmes.api:main"]},
     install_requires=["ete3", "pyfaidx>=0.5.8"],
