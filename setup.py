@@ -12,6 +12,7 @@ setuptools.setup(
     author="Paul Saary",
     author_email="saary@ebi.ac.uk",
     description="Run GeneMark-ES using pretrained models",
+    url="https://github.com/openpaul/pygmes",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="",
