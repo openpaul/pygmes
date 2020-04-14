@@ -19,9 +19,10 @@ setuptools.setup(
     entry_points={"console_scripts": ["pygmes = pygmes.api:main"]},
     install_requires=["ete3", "pyfaidx>=0.5.8"],
     packages=setuptools.find_packages(),
+    license="GPLv3",
     classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3.6",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "Operating System :: Unix",
     ],
 )
