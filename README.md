@@ -5,6 +5,9 @@ GeneMark-ES has some problems with fragmented and incomplete genomes.
 
 For metagenomic analysis this is an issue, thus I developed pygmes.
 
-pygmes build on precomputed models to make GeneMark-ES perform on its best. 
+## Status
+Currently this project is very much WIP, so do expect problems and
+incomplete documentation.
 
-More documentation will be hosted on readthedocs.
+It is just on pip already as it is a suggested package for EukCC (https://github.com/Finn-Lab/EukCC/)
+

@@ -11,7 +11,7 @@ setuptools.setup(
     version=version["__version__"],
     author="Paul Saary",
     author_email="saary@ebi.ac.uk",
-    description="Run GeneMark-ES with some bells",
+    description="Run GeneMark-ES using pretrained models",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="",
