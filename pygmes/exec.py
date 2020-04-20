@@ -12,7 +12,6 @@ from pygmes.printlngs import print_lngs
 from ete3 import NCBITaxa
 import shutil
 
-ncbi = NCBITaxa()
 
 
 import urllib.request
@@ -423,6 +422,7 @@ class gmes:
         write infered taxonomy in a machine and human readble format
         """
         logging.info("Translating lineage")
+        ncbi = NCBITaxa()
         taxf = os.path.join(self.outdir, "lineage.txt")
         with open(taxf, "w") as fout:
            # get the information

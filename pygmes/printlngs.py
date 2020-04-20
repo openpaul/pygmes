@@ -1,7 +1,6 @@
 
 import logging
 from ete3 import NCBITaxa
-ncbi = NCBITaxa()
 
 def compare_taxa(tax1, tax2):
     score = 0
@@ -147,6 +146,7 @@ def write_lngs(lngs, outfile):
     write infered taxonomy in a machine and human readble format
     """
     logging.info("Translating lineage")
+    ncbi = NCBITaxa()
     with open(outfile, "w") as fout:
         fout.write("bin\ttaxid\tncbi_rank\tncbi_name\tbasedon\n")
         for binname, lngi in lngs.items():
