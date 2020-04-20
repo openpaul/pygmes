@@ -6,7 +6,6 @@ from random import sample
 from collections import defaultdict
 from ete3 import NCBITaxa
 
-ncbi = NCBITaxa()
 
 
 def majorityvote(lngs, fraction=0.6):
@@ -129,6 +128,7 @@ class diamond:
         if tax in self.lineages.keys():
             return self.lineages[tax]
         else:
+            ncbi = NCBITaxa()
             try:
                 self.lineages[tax] = ncbi.get_lineage(tax)
                 return self.lineages[tax]
