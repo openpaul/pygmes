@@ -324,6 +324,7 @@ class gmes:
         self.bestpremodel = False
         modelfiles = glob.glob(os.path.join(models, "*.mod"))
         subgmes = []
+        logging.debug("Running {} models".format(len(modelfiles)))
         for model in modelfiles:
             logging.debug("Using model %s" % os.path.basename(model))
             name = os.path.basename(model)
@@ -355,6 +356,7 @@ class gmes:
         """
         if len(self.modelinfomap) == 0:
             info = self.fetch_info("{}info.csv".format(url))
+            logging.debug("Fetching models from {}".format(url))
             for line in info.split("\n"):
                 l = line.split(",")
                 if len(l) == 3:
