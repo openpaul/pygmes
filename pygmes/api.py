@@ -170,14 +170,17 @@ class pygmes:
             shutil.copy(g.bedfile, os.path.join(self.outdir, "predicted_proteins.bed"))
         else:
             logging.debug("Could not find bed file")
-        print(g.bedfile)
 
     def clean_fasta(self, fastaIn, folder):
         create_dir(folder)
         name = os.path.basename(fastaIn)
         fastaOut = os.path.join(folder, name)
+        if os.path.abspath(fastaOut) == os.path.abspath(fastaIn):
+            logging.error("Name collision, please do not use the same folder for input and output")
+            exit(1)
+            
         if os.path.exists(fastaOut):
-            logging.debug("Clean fasta %s exists" % name)
+            logging.warning("Clean fasta file %s already exists, this could be from a previous run or an file name issue!" % name)
             return fastaOut
         mappingfile = os.path.join(folder, "mapping.csv")
         logging.debug("Cleaning fasta file")
