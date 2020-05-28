@@ -108,6 +108,9 @@ class diamond:
                 % self.faa
             )
             return 0
+        except Exception as e:
+            print(e)
+            return 0
 
         keys = faa.keys()
         if len(keys) > n:
@@ -186,6 +189,9 @@ class multidiamond(diamond):
                 "Could not read the faa file as it probably \n contains no sequence information. \n Check file: %s "
                 % fasta
             )
+            return 0
+        except Exception as e:
+            print(e)
             return 0
 
         keys = faa.keys()

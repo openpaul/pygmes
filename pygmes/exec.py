@@ -65,7 +65,6 @@ class gmes:
         failpath = os.path.join(self.outdir, "tried_already")
         if os.path.exists(failpath):
             logging.info("Self-training skipped, as we did this before and it failed")
-            self.gtf2faa()
             return
         if os.path.exists(self.gtf):
             logging.info("GTF file already exists, skipping")
@@ -199,10 +198,16 @@ class gmes:
             logging.warning("Bedfile already exists, skipping")
             return
 
-
         # load gtf
         if beds is None:
             beds = self.parse_gtf(gtf)
+        # check that keys() are contained
+        for name, v in beds.items():
+            if rename is not None:
+                if name not in rename.keys():
+                    logging.warning("Error creating bed file")
+                    exit(1)
+                        
         # write to file
         with open(outfile, "w") as f:
             for name, v in beds.items():
@@ -232,16 +237,16 @@ class gmes:
         try:
             faa = Fasta(faa)
         except FastaIndexingError:
-            return
+            exit(1)
         except Exception as e:
             logging.debug("Unhandled pyfaidx Fasta error")
-            print(e)
-            return
+            exit(1)
         # load gtf
         beds = self.parse_gtf(gtf)
         orfcounter = defaultdict(int)
         # keep track of the renaming, so we can rename the bed
         renamed = {}
+        logging.debug("Creating metadata for %s" % self.finalfaa)
         # parse and rename
         with open(self.finalfaa, "w") as fout:
             for record in faa:
@@ -286,7 +291,7 @@ class gmes:
         if self.check_success():
             logging.info("Ran GeneMark-ES successfully")
             # predict the lng now
-            logging.info("Predicting the lng now")
+            logging.info("Predicting the lineage now")
             self.estimate_tax(diamonddb)
         else:
             logging.info("Using pre-trained models")
@@ -339,10 +344,16 @@ class gmes:
         else:
             aminoacidcount = []
             for g in subgmes:
-                fa = Fasta(g.protfaa)
                 i = 0
-                for seq in fa:
-                    i += len(seq)
+                try:
+                    fa = Fasta(g.protfaa)
+                    for seq in fa:
+                        i += len(seq)
+                except FastaIndexingError:
+                    logging.warning("Could not read fasta")
+                except Exception as e:
+                    logging.debug("Unhandled pyfaidx Fasta error")
+
                 aminoacidcount.append(i)
             # set the best model as the model leading to the most amino acids
             idx = aminoacidcount.index(max(aminoacidcount))
