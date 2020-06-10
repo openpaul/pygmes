@@ -478,7 +478,7 @@ def main():
     # check if input is readable
     if not os.path.exists(options.input):
         logging.warning("Input file does not exist: %s" % options.input)
-        exit()
+        exit(1)
     logging.info("Starting pygmes")
     logging.debug("Using fasta: %s" % options.input)
     logging.debug("Using %d threads" % options.ncores)

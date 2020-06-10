@@ -237,10 +237,14 @@ class gmes:
         try:
             faa = Fasta(faa)
         except FastaIndexingError:
-            exit(1)
+            logging.warning("Fastaindexing error")
+            self.finalfaa = False
+            return
         except Exception as e:
-            logging.debug("Unhandled pyfaidx Fasta error")
-            exit(1)
+            logging.warning("Unhandled pyfaidx Fasta error")
+            print(e)
+            self.finalfaa = False
+            return
         # load gtf
         beds = self.parse_gtf(gtf)
         orfcounter = defaultdict(int)
@@ -255,7 +259,7 @@ class gmes:
                     print("protein: %s" % record.name)
                     print("GTF file: %s" % gtf)
                     logging.warning("stopping here, this is a bug in pygmes or an issue with GeneMark-ES")
-                    exit()
+                    exit(1)
                 contig = beds[record.name]['chrom']
                 orfcounter[contig] += 1
                 # we use 1 as the first number, instead of the cool 0
