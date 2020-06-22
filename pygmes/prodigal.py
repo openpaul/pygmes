@@ -9,7 +9,7 @@ class prodigal:
         self.outdir = outdir
         self.logfile = os.path.join(outdir, "prodigal.log")
         if ncores == 1:
-            logging.warning("You are running Prodigal with a single core. This will be slow. We recommend using 8-16 cores.")
+            logging.warning("You are running Prodigal with a single core. This will be slow. We recommend using 4-8 cores.")
         self.faa = self.run(ncores)
         self.bed = self.make_bed()
 

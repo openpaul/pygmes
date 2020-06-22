@@ -70,7 +70,7 @@ class gmes:
         self.tax = []
         self.modelinfomap = {}
         if ncores == 1:
-            logging.warning("You are running GeneMark-ES with a single core. This will be slow. We recommend using 8-16 cores.")
+            logging.warning("You are running GeneMark-ES with a single core. This will be slow. We recommend using 4-8 cores.")
 
     def selftraining(self):
         failpath = os.path.join(self.outdir, "tried_already")
@@ -100,6 +100,7 @@ class gmes:
                 subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
                             stdout = fout, stderr = fout)
         except subprocess.CalledProcessError:
+            self.check_for_license_issue(self.logfile)
             touch(failpath)
             logging.info("GeneMark-ES in self-training mode has failed")
         # predict and then clean
@@ -114,6 +115,16 @@ class gmes:
             p = os.path.join(self.outdir, folder)
             delete_folder(p)
 
+
+    def check_for_license_issue(self, logfile):
+        # we do a quick search for 'icense' as this
+        #string  is in every message regarding gmes licensing issues
+        # if this string pops up, we need to inform the user
+        with open(logfile) as fin:
+            for line in fin:
+                if 'icense' in line:
+                    logging.error("There are issues with your GeneMark-ES license. Please check that is is availiable and not expired.")
+                    exit(7)
 
     def prediction(self, model):
         self.model = model
@@ -142,6 +153,7 @@ class gmes:
                 subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
                             stdout = fout, stderr = fout)
         except subprocess.CalledProcessError:
+            self.check_for_license_issue(self.logfile)
             logging.info("GeneMark-ES in prediction mode has failed")
             touch(failpath)
         # predict and then clean
