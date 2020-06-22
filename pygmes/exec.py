@@ -11,11 +11,22 @@ from pygmes.diamond import diamond
 from pygmes.printlngs import print_lngs
 from ete3 import NCBITaxa
 import shutil
-
-
-
 import urllib.request
 
+
+def is_tool(name):
+    """Check whether `name` is on PATH and marked as executable."""
+
+    # from whichcraft import which
+    from shutil import which
+
+    return which(name) is not None
+
+def check_dependencies(software):
+    for p in software:
+        if is_tool(p) is False:
+            logging.error("Dependency {} is not available".format(p))
+            exit(1)
 
 url = "http://paulsaary.de/gmes/"
 def create_dir(d):

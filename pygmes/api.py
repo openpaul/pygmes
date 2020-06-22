@@ -8,7 +8,7 @@ import gzip
 from glob import glob
 from pyfaidx import Fasta
 import pygmes.version  as version
-from pygmes.exec import create_dir
+from pygmes.exec import create_dir, check_dependencies
 from pygmes.printlngs import write_lngs
 from pygmes.prodigal import prodigal
 
@@ -449,7 +449,7 @@ class metapygmes(pygmes):
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate completeness and contamination of a MAG.")
-    parser.add_argument("--input", "-i", type=str, help="path to the fasta file, or in metagenome mode path to bin folder")
+    parser.add_argument("--input", "-i", type=str, help="path to the fasta file, or in metagenome mode path to bin folder", default=None)
     parser.add_argument("--output", "-o", type=str, required=True, help="Path to the output folder")
     parser.add_argument("--db", "-d", type=str, required=True, help="Path to the diamond DB")
     parser.add_argument("--noclean", dest="noclean", default = True, action="store_false",required=False, help = "GeneMark-ES needs clean fasta headers and will fail if you dont proveide them. Set this flag if you don't want pygmes to clean your headers")
@@ -475,7 +475,15 @@ def main():
         format="%(asctime)s %(message)s", datefmt="%m/%d/%Y %H:%M:%S: ", level=logLevel,
     )
 
+    # check for all dependencies
+    dependencies = ["diamond", "prodigal", "gmes_petap.pl"]
+    logging.debug("Checking dependencies")
+    check_dependencies(dependencies)
+
     # check if input is readable
+    if options.input is None:
+            logging.error("Please provide an input")
+            exit(1)
     if not os.path.exists(options.input):
         logging.warning("Input file does not exist: %s" % options.input)
         exit(1)
