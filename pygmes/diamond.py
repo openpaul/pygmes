@@ -7,7 +7,6 @@ from collections import defaultdict
 from ete3 import NCBITaxa
 
 
-
 def majorityvote(lngs, fraction=0.6):
     if fraction <= 0.5:
         logging.warning("fraction must be larger than 0.5")
@@ -47,7 +46,9 @@ class diamond:
         self.log = os.path.join(self.outdir, "diamond.log")
         self.lineages = {}
         if ncores == 1:
-            logging.warning("You are running Diamond with a single core. This will be slow. We recommend using 8-16 cores.")
+            logging.warning(
+                "You are running Diamond with a single core. This will be slow. We recommend using 8-16 cores."
+            )
         # sample n proteins
         logging.info("Subsampeling %d proteins" % sample)
         self.samplefile = os.path.join(self.outdir, "diamond.query.faa")
@@ -61,7 +62,7 @@ class diamond:
         # infer lineages
         logging.debug("Inferring the lineage")
         proteinlngs = self.lineage_infer_protein(self.result)
-        self.lineage  = self.vote_bin(proteinlngs)
+        self.lineage = self.vote_bin(proteinlngs)
         logging.debug("Finished the diamond step")
 
     def search(self, outfile, query):
@@ -91,12 +92,12 @@ class diamond:
                 "-o",
                 outfile,
             ]
-            with open(self.log , "w") as fout:
-                subprocess.run(lst, stderr = fout, stdout = fout)
+            with open(self.log, "w") as fout:
+                subprocess.run(lst, stderr=fout, stdout=fout)
             logging.debug("Ran diamond")
         else:
             logging.info("Diamond output already exists ")
-            logging.debug("AT: %s" %  outfile)
+            logging.debug("AT: %s" % outfile)
 
     def sample(self, output, n=200):
         logging.debug("Sampeling %d proteins from %s" % (n, self.faa))
@@ -155,9 +156,9 @@ class diamond:
         lngs = [lng for prot, lng in proteinlngs.items()]
         return majorityvote(lngs)
 
-    
+
 class multidiamond(diamond):
-    def __init__(self,proteinfiles, names, outdir, db, ncores = 1, nsample = 200):
+    def __init__(self, proteinfiles, names, outdir, db, ncores=1, nsample=200):
         self.outdir = os.path.abspath(outdir)
         self.files = proteinfiles
         self.names = names
@@ -168,14 +169,16 @@ class multidiamond(diamond):
         self.ncores = ncores
         self.lineages = {}
         if ncores == 1:
-            logging.warning("You are running Diamond with a single core. This will be slow. We recommend using 8-16 cores.")
+            logging.warning(
+                "You are running Diamond with a single core. This will be slow. We recommend using 8-16 cores."
+            )
         # sample
         with open(self.samplefile, "w") as f:
             f.write("")
         for fasta, name in zip(self.files, self.names):
             self.sample(fasta, name, self.samplefile)
-        
-        # then run 
+
+        # then run
         self.search(self.outfile, self.samplefile)
         self.result = self.parse_results(self.outfile)
         self.lngs = self.vote_bins(self.result)
@@ -200,10 +203,11 @@ class multidiamond(diamond):
         with open(output, "a") as fout:
             for k in keys:
                 fout.write(f">{name}_binseperator_{k}\n{str(faa[k])}\n")
-    
+
     def parse_results(self, result):
         def subdict():
-            return(defaultdict(list))
+            return defaultdict(list)
+
         r = defaultdict(subdict)
         with open(result) as f:
             for line in f:
@@ -213,7 +217,7 @@ class multidiamond(diamond):
                 protein = names[1]
                 r[binname][protein].append(l[5])
         return r
-    
+
     def vote_bins(self, result):
         binnames = result.keys()
         lngs = {}
@@ -223,4 +227,4 @@ class multidiamond(diamond):
             lngs[bin]["lng"] = self.vote_bin(protlng)
             lngs[bin]["n"] = len(protlng)
 
-        return(lngs)
+        return lngs

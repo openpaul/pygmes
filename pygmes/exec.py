@@ -14,6 +14,8 @@ import shutil
 import gzip
 import urllib.request
 
+url = "ftp://ftp.ebi.ac.uk/pub/databases/metagenomics/pygmes/latest/"
+
 
 def is_tool(name):
     """Check whether `name` is on PATH and marked as executable."""
@@ -23,14 +25,14 @@ def is_tool(name):
 
     return which(name) is not None
 
+
 def check_dependencies(software):
     for p in software:
         if is_tool(p) is False:
             logging.error("Dependency {} is not available".format(p))
             exit(1)
 
-url = "ftp://ftp.ebi.ac.uk/pub/databases/metagenomics/pygmes/latest/"
-#url = "ftp://ftp.ebi.ac.uk/pub/databases/metagenomics/pygmes//pygmes_db_202006/"
+
 def create_dir(d):
     if not os.path.isdir(d):
         try:
@@ -48,11 +50,14 @@ def delete_folder(d):
                 logging.warning("Could not delete folder: %s" % d)
                 print(e)
 
+
 def touch(fname, mode=0o666, dir_fd=None, **kwargs):
     flags = os.O_CREAT | os.O_APPEND
     with os.fdopen(os.open(fname, flags=flags, mode=mode, dir_fd=dir_fd)) as f:
-        os.utime(f.fileno() if os.utime in os.supports_fd else fname,
-            dir_fd=None if os.supports_fd else dir_fd, **kwargs)
+        os.utime(
+            f.fileno() if os.utime in os.supports_fd else fname, dir_fd=None if os.supports_fd else dir_fd, **kwargs
+        )
+
 
 class gmes:
     def __init__(self, fasta, outdir, ncores=1):
@@ -72,7 +77,9 @@ class gmes:
         self.tax = []
         self.modelinfomap = {}
         if ncores == 1:
-            logging.warning("You are running GeneMark-ES with a single core. This will be slow. We recommend using 4-8 cores.")
+            logging.warning(
+                "You are running GeneMark-ES with a single core. This will be slow. We recommend using 4-8 cores."
+            )
 
     def selftraining(self):
         failpath = os.path.join(self.outdir, "tried_already")
@@ -99,8 +106,7 @@ class gmes:
         ]
         try:
             with open(self.logfile, "a") as fout:
-                subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
-                            stdout = fout, stderr = fout)
+                subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True, stdout=fout, stderr=fout)
         except subprocess.CalledProcessError:
             self.check_for_license_issue(self.logfile)
             touch(failpath)
@@ -112,25 +118,26 @@ class gmes:
     def clean_gmes_files(self):
         # clean if there are files to clean
         # this just keeps the foodprint lower
-        rmfolders = ['run', 'info', 'data', 'output/data', 'output/gmhmm']
+        rmfolders = ["run", "info", "data", "output/data", "output/gmhmm"]
         for folder in rmfolders:
             p = os.path.join(self.outdir, folder)
             delete_folder(p)
 
-
     def check_for_license_issue(self, logfile):
         # we do a quick search for 'icense' as this
-        #string  is in every message regarding gmes licensing issues
+        # string  is in every message regarding gmes licensing issues
         # if this string pops up, we need to inform the user
         with open(logfile) as fin:
             for line in fin:
-                if 'icense' in line:
-                    logging.error("There are issues with your GeneMark-ES license. Please check that is is availiable and not expired.")
+                if "icense" in line:
+                    logging.error(
+                        "There are issues with your GeneMark-ES license. Please check that is is availiable and not expired."
+                    )
                     exit(7)
 
     def prediction(self, model):
         self.model = model
-        self.modelname = os.path.basename(model).replace(".mod","")
+        self.modelname = os.path.basename(model).replace(".mod", "")
         failpath = os.path.join(self.outdir, "tried_already")
         if os.path.exists(failpath):
             logging.info("Prediction skipped, as we did this before and it failed")
@@ -152,8 +159,7 @@ class gmes:
         ]
         try:
             with open(self.logfile, "a") as fout:
-                subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
-                            stdout = fout, stderr = fout)
+                subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True, stdout=fout, stderr=fout)
         except subprocess.CalledProcessError:
             self.check_for_license_issue(self.logfile)
             logging.info("GeneMark-ES in prediction mode has failed")
@@ -172,20 +178,21 @@ class gmes:
         else:
             try:
                 with open(self.loggtf, "a") as fout:
-                    subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True,
-                                stdout = fout, stderr = fout)
+                    subprocess.run(" ".join(lst), cwd=self.outdir, check=True, shell=True, stdout=fout, stderr=fout)
             except subprocess.CalledProcessError:
                 logging.warning("could not get proteins from gtf")
         # rename the proteins, to be compatibale with CAT
-        #self.gtf2bed(self.gtf, self.bedfile)
+        # self.gtf2bed(self.gtf, self.bedfile)
         self.rename_for_CAT()
 
     def parse_gtf(self, gtf):
-        """Given a gtf file from genemark es it extracts 
+        """Given a gtf file from genemark es it extracts
         some information to create a bed file"""
         nre = re.compile(r'gene_id "([0-9]+_g)\";')
+
         def beddict():
-            return({"chrom": None, "r": [], "strand": None})
+            return {"chrom": None, "r": [], "strand": None}
+
         beds = defaultdict(beddict)
         with open(gtf) as f:
             for line in f:
@@ -194,18 +201,18 @@ class gmes:
                     continue
 
                 l = line.split("\t")
-                chrom = l[0].strip()
-                start = int(l[3])
-                stop = int(l[4])
-                strand = l[6]
+                # chrom = l[0].strip()
+                # start = int(l[3])
+                # stop = int(l[4])
+                # strand = l[6]
 
                 # regex match
-                m = (nre.findall(l[8]))
+                m = nre.findall(l[8])
                 if m is not None:
                     name = m[0]
                 else:
                     continue
-    
+
                 # save all in the dictonary
                 beds[name]["chrom"] = l[0]
                 beds[name]["r"].append(int(l[3]))
@@ -213,10 +220,10 @@ class gmes:
                 beds[name]["strand"] = l[6]
         return beds
 
-    def gtf2bed(self, gtf, outfile, rename = None, beds = None):
+    def gtf2bed(self, gtf, outfile, rename=None, beds=None):
         """
         given a faa file and a gtf(genemark-es format)
-        we will be able to create a bed file, which can be used 
+        we will be able to create a bed file, which can be used
         with eukcc
         """
         if os.path.exists(outfile):
@@ -232,16 +239,16 @@ class gmes:
                 if name not in rename.keys():
                     logging.warning("Error creating bed file")
                     exit(1)
-                        
+
         # write to file
         with open(outfile, "w") as f:
             for name, v in beds.items():
                 if rename is not None:
                     name = rename[name]
-                vals = "\t".join([v["chrom"], str(min(v["r"])), str(max(v["r"])), v['strand'], name])
+                vals = "\t".join([v["chrom"], str(min(v["r"])), str(max(v["r"])), v["strand"], name])
                 f.write("{}\n".format(vals))
-        
-    def rename_for_CAT(self, faa = None, gtf = None):
+
+    def rename_for_CAT(self, faa=None, gtf=None):
         """
         renames the protein file
         to matche the format:
@@ -285,7 +292,7 @@ class gmes:
                     print("GTF file: %s" % gtf)
                     logging.warning("stopping here, this is a bug in pygmes or an issue with GeneMark-ES")
                     exit(1)
-                contig = beds[record.name]['chrom']
+                contig = beds[record.name]["chrom"]
                 orfcounter[contig] += 1
                 # we use 1 as the first number, instead of the cool 0
                 newprotname = "{}_{}".format(contig, orfcounter[contig])
@@ -315,7 +322,7 @@ class gmes:
                         return True
                 j = j - 1
 
-    def run_complete(self, models, diamonddb, run_diamond = 1):
+    def run_complete(self, models, diamonddb, run_diamond=1):
         self.selftraining()
         if self.check_success():
             logging.info("Ran GeneMark-ES successfully")
@@ -330,17 +337,15 @@ class gmes:
                 self.bestpremodel.estimate_tax(diamonddb)
                 self.premodeltax = self.bestpremodel.tax
                 # print lineage of model compared to the infered tax
-                print_lngs(self.modelinfomap[self.bestpremodel.modelname],
-                           self.premodeltax)
+                print_lngs(self.modelinfomap[self.bestpremodel.modelname], self.premodeltax)
                 localmodals = self.infer_model(self.premodeltax)
                 self.premodel(localmodals, stage=2)
-                
+
                 if run_diamond > 1:
                     self.bestpremodel.estimate_tax(diamonddb)
                     self.premodeltax = self.bestpremodel.tax
                 # print lineage of model compared to the infered tax
-                print_lngs(self.modelinfomap[self.bestpremodel.modelname],
-                           self.premodeltax)
+                print_lngs(self.modelinfomap[self.bestpremodel.modelname], self.premodeltax)
                 # set the final values of of the protein prediction step
                 self.finalfaa = self.bestpremodel.finalfaa
                 self.bedfile = self.bestpremodel.bedfile
@@ -350,7 +355,7 @@ class gmes:
     def estimate_tax(self, db):
         ddir = os.path.join(self.outdir, "diamond")
         create_dir(ddir)
-        d = diamond(self.protfaa, ddir, db, sample=200, ncores = self.ncores)
+        d = diamond(self.protfaa, ddir, db, sample=200, ncores=self.ncores)
         self.tax = d.lineage
 
     def premodel(self, models, stage=1):
@@ -365,7 +370,7 @@ class gmes:
             logging.debug("Using model %s" % os.path.basename(model))
             name = os.path.basename(model)
             odir = os.path.join(self.outdir, "{}_premodels".format(stage), name)
-            g = gmes(self.fasta, odir, ncores = self.ncores)
+            g = gmes(self.fasta, odir, ncores=self.ncores)
             g.prediction(model)
             if g.check_success():
                 subgmes.append(g)
@@ -382,7 +387,7 @@ class gmes:
                         i += len(seq)
                 except FastaIndexingError:
                     logging.warning("Could not read fasta")
-                except Exception as e:
+                except Exception:
                     logging.debug("Unhandled pyfaidx Fasta error")
 
                 aminoacidcount.append(i)
@@ -440,7 +445,7 @@ class gmes:
         with open(modelfile, "w") as mod:
             mod.writelines(content.decode())
 
-    def fetch_info(self, url, i = 5):
+    def fetch_info(self, url, i=5):
         logging.debug("opening url {}".format(url))
         try:
             response = urllib.request.urlopen(url)
@@ -448,8 +453,9 @@ class gmes:
             infocsv = data.decode("utf-8")
         except urllib.error.URLError:
             import time
+
             if i > 0:
-                i = i -1
+                i = i - 1
                 time.sleep(5)
                 infocsv = self.fetch_info(url, i)
             else:
@@ -457,7 +463,6 @@ class gmes:
                 exit(1)
 
         return infocsv
-
 
     def score_models(self, infomap, lng):
         scores = defaultdict(int)
@@ -482,7 +487,7 @@ class gmes:
         ncbi = NCBITaxa()
         taxf = os.path.join(self.outdir, "lineage.txt")
         with open(taxf, "w") as fout:
-           # get the information
+            # get the information
             lng = self.tax
             nms = ncbi.get_taxid_translator(lng)
             ranks = ncbi.get_rank(lng)
@@ -495,5 +500,5 @@ class gmes:
                     name = nms[taxid]
                 else:
                     name = "unnamed"
-                fout.write(f"{taxid}\t{ranks[taxid]}\t{name}\n") 
+                fout.write(f"{taxid}\t{ranks[taxid]}\t{name}\n")
         logging.info("Wrote lineage to %s" % taxf)
