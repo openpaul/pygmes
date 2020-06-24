@@ -11,6 +11,7 @@ from pygmes.diamond import diamond
 from pygmes.printlngs import print_lngs
 from ete3 import NCBITaxa
 import shutil
+import gzip
 import urllib.request
 
 
@@ -28,7 +29,8 @@ def check_dependencies(software):
             logging.error("Dependency {} is not available".format(p))
             exit(1)
 
-url = "http://paulsaary.de/gmes/"
+url = "ftp://ftp.ebi.ac.uk/pub/databases/metagenomics/pygmes/latest/"
+#url = "ftp://ftp.ebi.ac.uk/pub/databases/metagenomics/pygmes//pygmes_db_202006/"
 def create_dir(d):
     if not os.path.isdir(d):
         try:
@@ -313,7 +315,7 @@ class gmes:
                         return True
                 j = j - 1
 
-    def run_complete(self, models, diamonddb):
+    def run_complete(self, models, diamonddb, run_diamond = 1):
         self.selftraining()
         if self.check_success():
             logging.info("Ran GeneMark-ES successfully")
@@ -332,8 +334,10 @@ class gmes:
                            self.premodeltax)
                 localmodals = self.infer_model(self.premodeltax)
                 self.premodel(localmodals, stage=2)
-                self.bestpremodel.estimate_tax(diamonddb)
-                self.premodeltax = self.bestpremodel.tax
+                
+                if run_diamond > 1:
+                    self.bestpremodel.estimate_tax(diamonddb)
+                    self.premodeltax = self.bestpremodel.tax
                 # print lineage of model compared to the infered tax
                 print_lngs(self.modelinfomap[self.bestpremodel.modelname],
                            self.premodeltax)
@@ -392,13 +396,17 @@ class gmes:
         function to make sure the information of all models
         is known to the class
         """
+        ncbi = NCBITaxa()
         if len(self.modelinfomap) == 0:
             info = self.fetch_info("{}info.csv".format(url))
             logging.debug("Fetching models from {}".format(url))
             for line in info.split("\n"):
                 l = line.split(",")
-                if len(l) == 3:
-                    self.modelinfomap[l[0]] = l[2].split("-")
+                # fetch lineage from ete3 for each model
+                # time consuming but important to adapt to changes
+                # in NCBI taxonomy
+                if len(l) > 1:
+                    self.modelinfomap[l[0]] = ncbi.get_lineage(l[1])
 
     def infer_model(self, tax, n=3):
         """
@@ -424,23 +432,32 @@ class gmes:
         return modeldir
 
     def fetch_model(self, folder, url, name):
-        url = "{}/models/{}.mod".format(url, name)
+        url = "{}/models/{}.mod.gz".format(url, name)
         modelfile = os.path.join(folder, "{}.mod".format(name))
         response = urllib.request.urlopen(url)
         data = response.read()  # a `bytes` object
-        content = data.decode(
-            "utf-8"
-        )  # a `str`; this step can't be used if data is binary
+        content = gzip.decompress(data)
         with open(modelfile, "w") as mod:
-            mod.writelines(content)
+            mod.writelines(content.decode())
 
-    def fetch_info(self, url):
-        response = urllib.request.urlopen(url)
-        data = response.read()  # a `bytes` object
-        infocsv = data.decode(
-            "utf-8"
-        )  # a `str`; this step can't be used if data is binary
+    def fetch_info(self, url, i = 5):
+        logging.debug("opening url {}".format(url))
+        try:
+            response = urllib.request.urlopen(url)
+            data = response.read()  # a `bytes` object
+            infocsv = data.decode("utf-8")
+        except urllib.error.URLError:
+            import time
+            if i > 0:
+                i = i -1
+                time.sleep(5)
+                infocsv = self.fetch_info(url, i)
+            else:
+                logging.error("Could not fetch model file")
+                exit(1)
+
         return infocsv
+
 
     def score_models(self, infomap, lng):
         scores = defaultdict(int)

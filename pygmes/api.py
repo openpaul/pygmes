@@ -147,7 +147,7 @@ class pygmes:
 
     **ncores:** number of threads to use
     """
-    def __init__(self, fasta, outdir, db,  clean = True, ncores = 1):
+    def __init__(self, fasta, outdir, db,  clean = True, ncores = 1, run_diamond = 1):
         self.fasta = fasta
         self.outdir = outdir
         self.ncores = ncores
@@ -161,7 +161,7 @@ class pygmes:
         logging.info("Launching GeneMark-ES")
         g = gmes(self.cleanfasta, outdir, ncores)
         logging.debug("Run complete launch")
-        g.run_complete(MODELS_PATH, db)
+        g.run_complete(MODELS_PATH, db, run_diamond)
         if g.finalfaa:
             logging.debug("Copying final faa from: %s" % g.finalfaa)
             shutil.copy(g.finalfaa, os.path.join(self.outdir, "predicted_proteins.faa"))
@@ -455,6 +455,8 @@ def main():
     parser.add_argument("--noclean", dest="noclean", default = True, action="store_false",required=False, help = "GeneMark-ES needs clean fasta headers and will fail if you dont proveide them. Set this flag if you don't want pygmes to clean your headers")
     parser.add_argument("--ncores", "-n", type=int, required=False, default = 1,
             help="Number of threads to use with GeneMark-ES and Diamond")
+    parser.add_argument("--run_diamond", type=int, required=False, default = 1,
+            help="Set to 2 if diamond should be ran again as a final lineage estimation, usually not needed")
     parser.add_argument("--meta", dest="meta", action = "store_true", default=False, help = "Run in metaegnomic mode")
     parser.add_argument(
         "--quiet", "-q", dest="quiet", action="store_true", default=False, help="Silcence most output",
@@ -493,7 +495,7 @@ def main():
 
     if not options.meta:
         pygmes(options.input, options.output, options.db, clean = options.noclean,
-            ncores = options.ncores)
+            ncores = options.ncores, run_diamond =  options.run_diamond)
     else:
         metapygmes(options.input, options.output, options.db, clean = options.noclean,
             ncores = options.ncores)
