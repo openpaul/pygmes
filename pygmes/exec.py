@@ -251,7 +251,7 @@ class gmes:
         self.finalfaa = os.path.join(self.outdir, "prot_final.faa")
         self.bedfile = os.path.join(self.outdir, "proteins.bed")
         if os.path.exists(self.finalfaa) and os.path.exists(self.bedfile):
-            logging.debug("Renamed faa exists, skipping")
+            logging.debug("Renamed faa exists, likely from previous run. Skipping this step")
             return
         if faa is None:
             faa = self.protfaa

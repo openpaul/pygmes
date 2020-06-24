@@ -174,7 +174,7 @@ class pygmes:
     def clean_fasta(self, fastaIn, folder):
         create_dir(folder)
         name = os.path.basename(fastaIn)
-        fastaOut = os.path.join(folder, name)
+        fastaOut = os.path.join(folder, "gmesclean_{}".format(name))
         if os.path.abspath(fastaOut) == os.path.abspath(fastaIn):
             logging.error("Name collision, please do not use the same folder for input and output")
             exit(1)
