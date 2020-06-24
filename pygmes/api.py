@@ -172,10 +172,13 @@ class pygmes:
         else:
             logging.debug("Could not find bed file")
 
-    def clean_fasta(self, fastaIn, folder):
+    def clean_fasta(self, fastaIn, folder, rename=True):
         create_dir(folder)
         name = os.path.basename(fastaIn)
-        fastaOut = os.path.join(folder, "gmesclean_{}".format(name))
+        if rename:
+            fastaOut = os.path.join(folder, "gmesclean_{}".format(name))
+        else:
+            fastaOut = os.path.join(folder, name)
         if os.path.abspath(fastaOut) == os.path.abspath(fastaIn):
             logging.error("Name collision, please do not use the same folder for input and output")
             exit(1)
@@ -259,7 +262,7 @@ class metapygmes(pygmes):
         if clean:
             logging.info("Cleaning input fastas")
             cleanfastadir = os.path.join(outdir, "fasta_clean")
-            files = [self.clean_fasta(f, cleanfastadir) for f in files]
+            files = [self.clean_fasta(f, cleanfastadir, rename=False) for f in files]
 
         # bin list to keep all the bins and handle all the operations
         binlst = []
