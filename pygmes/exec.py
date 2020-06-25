@@ -98,10 +98,13 @@ class multistep_gmes:
         self.gmes = run
         # if training was done, copy the model
         if training:
+            logging.debug("Trying to copy the model file")
             model_out = os.path.join(self.outdir, "gmhmm.mod")
-            winning_model = os.path.join(run.outdir, "output", "gmhmm.mod")
-            if os.path.exists(winning_model):
-                shutil.copy(winning_model, model_out)
+            if os.path.exists(run.model):
+                shutil.copy(run.model, model_out)
+            else:
+                logging.debug("Could not find model: {}".format(run.model))
+
         logging.debug("Copying final files")
         # copy the faa and bed file
         shutil.copy(run.finalfaa, os.path.join(self.outdir, "predicted_proteins.faa"))
