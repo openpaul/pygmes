@@ -1,7 +1,7 @@
 import os
 import logging
 import argparse
-from pygmes.exec import gmes
+from pygmes.exec import gmes, multistep_gmes
 from pygmes.diamond import multidiamond
 import pygmes.version as version
 from pygmes.exec import create_dir, check_dependencies
@@ -148,7 +148,7 @@ class pygmes:
     **ncores:** number of threads to use
     """
 
-    def __init__(self, fasta, outdir, db, clean=True, ncores=1, run_diamond=1):
+    def __init__(self, fasta, outdir, db, clean=True, ncores=1, cleanup=False):
         self.fasta = fasta
         self.outdir = outdir
         self.ncores = ncores
@@ -160,17 +160,12 @@ class pygmes:
             self.cleanfasta = self.fasta
 
         logging.info("Launching GeneMark-ES")
-        g = gmes(self.cleanfasta, outdir, ncores)
+        # g = gmes(self.cleanfasta, outdir, ncores)
         logging.debug("Run complete launch")
-        g.run_complete(MODELS_PATH, db, run_diamond)
-        if g.finalfaa:
-            logging.debug("Copying final faa from: %s" % g.finalfaa)
-            shutil.copy(g.finalfaa, os.path.join(self.outdir, "predicted_proteins.faa"))
-            g.writetax()
-        if g.bedfile:
-            shutil.copy(g.bedfile, os.path.join(self.outdir, "predicted_proteins.bed"))
-        else:
-            logging.debug("Could not find bed file")
+        # g.run_complete(MODELS_PATH, db, run_diamond)
+        ms = multistep_gmes(self.cleanfasta, outdir, ncores, db, MODELS_PATH)
+        if cleanup and ms.success is True:
+            ms.cleanup()
 
     def clean_fasta(self, fastaIn, folder, rename=True):
         create_dir(folder)
@@ -463,19 +458,20 @@ def main():
         help="GeneMark-ES needs clean fasta headers and will fail if you dont proveide them. Set this flag if you don't want pygmes to clean your headers",
     )
     parser.add_argument(
+        "--cleanup",
+        dest="cleanup",
+        default=False,
+        action="store_true",
+        required=False,
+        help="Delete everything but the output files",
+    )
+    parser.add_argument(
         "--ncores",
         "-n",
         type=int,
         required=False,
         default=1,
         help="Number of threads to use with GeneMark-ES and Diamond",
-    )
-    parser.add_argument(
-        "--run_diamond",
-        type=int,
-        required=False,
-        default=1,
-        help="Set to 2 if diamond should be ran again as a final lineage estimation, usually not needed",
     )
     parser.add_argument("--meta", dest="meta", action="store_true", default=False, help="Run in metaegnomic mode")
     parser.add_argument(
@@ -494,7 +490,10 @@ def main():
     elif options.debug:
         logLevel = logging.DEBUG
     logging.basicConfig(
-        format="%(asctime)s %(message)s", datefmt="%m/%d/%Y %H:%M:%S: ", level=logLevel,
+        format="%(asctime)s %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S: ",
+        level=logLevel,
+        handlers=[logging.FileHandler(os.path.join(options.output, "pygmes.log")), logging.StreamHandler()],
     )
 
     # check for all dependencies
@@ -519,8 +518,8 @@ def main():
             options.output,
             options.db,
             clean=options.noclean,
+            cleanup=options.cleanup,
             ncores=options.ncores,
-            run_diamond=options.run_diamond,
         )
     else:
         metapygmes(options.input, options.output, options.db, clean=options.noclean, ncores=options.ncores)

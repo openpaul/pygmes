@@ -5,7 +5,7 @@ import glob
 import re
 from pyfaidx import Fasta
 from pyfaidx import FastaIndexingError
-from random import sample
+from random import sample, seed
 from collections import defaultdict
 from pygmes.diamond import diamond
 from pygmes.printlngs import print_lngs
@@ -13,6 +13,8 @@ from ete3 import NCBITaxa
 import shutil
 import gzip
 import urllib.request
+
+seed(4145421)
 
 url = "ftp://ftp.ebi.ac.uk/pub/databases/metagenomics/pygmes/latest/"
 
@@ -57,6 +59,60 @@ def touch(fname, mode=0o666, dir_fd=None, **kwargs):
         os.utime(
             f.fileno() if os.utime in os.supports_fd else fname, dir_fd=None if os.supports_fd else dir_fd, **kwargs
         )
+
+
+class multistep_gmes:
+    def __init__(self, fasta, outdir, ncores, diamonddb, models):
+        self.outdir = outdir
+        self.training_dir = os.path.join(self.outdir, "training")
+        self.model_dir = os.path.join(self.outdir, "prediction")
+        self.fasta = fasta
+        self.success = False
+
+        # call a self training session
+        training = gmes(self.fasta, self.training_dir, ncores)
+        training.selftraining()
+        # check if training was successfulle
+        if training.check_success():
+            self.designate_winner(training, training=True)
+        else:
+            # run models to find best model
+            logging.info("Using pre-trained models")
+            model_run = gmes(self.fasta, self.model_dir, ncores)
+            model_run.fetchinfomap()
+            premodel_1 = model_run.premodel(models)
+            if premodel_1 is not False:
+                premodel_1.estimate_tax(diamonddb)
+                print_lngs(model_run.modelinfomap[premodel_1.modelname], premodel_1.tax)
+                localmodels = model_run.infer_model(premodel_1.tax)
+                premodel_2 = model_run.premodel(localmodels, stage=2)
+
+                # print lineage of model compared to the infered tax
+                print_lngs(model_run.modelinfomap[premodel_2.modelname], premodel_1.tax)
+                if premodel_2.check_success():
+                    self.designate_winner(premodel_2)
+                else:
+                    logging.error("Choosen model did not work")
+
+    def designate_winner(self, run, training=False):
+        self.gmes = run
+        # if training was done, copy the model
+        if training:
+            model_out = os.path.join(self.outdir, "gmhmm.mod")
+            winning_model = os.path.join(run.outdir, "output", "gmhmm.mod")
+            if os.path.exists(winning_model):
+                shutil.copy(winning_model, model_out)
+        logging.debug("Copying final files")
+        # copy the faa and bed file
+        shutil.copy(run.finalfaa, os.path.join(self.outdir, "predicted_proteins.faa"))
+        run.writetax()
+        shutil.copy(run.bedfile, os.path.join(self.outdir, "predicted_proteins.bed"))
+
+        self.success = True
+
+    def cleanup(self):
+        delete_folder(self.training_dir)
+        delete_folder(self.model_dir)
 
 
 class gmes:
@@ -113,6 +169,7 @@ class gmes:
             logging.info("GeneMark-ES in self-training mode has failed")
             return
         # predict and then clean
+        self.model = os.path.join(self.outdir, "output", "gmhmm.mod")
         self.gtf2faa()
         self.clean_gmes_files()
 
@@ -314,14 +371,18 @@ class gmes:
         # now more in detail
         # check if proteins are empty maybe
         with open(self.finalfaa) as fa:
-            j = 1
+            next(fa)
             for line in fa:
-                if j == 0:
-                    if line.strip() == "":
-                        return False
-                    else:
-                        return True
-                j = j - 1
+                if line.strip() == "":
+                    return False
+                break
+        # if we can not open it, its of no use
+        try:
+            Fasta(self.finalfaa)
+        except Exception:
+            return False
+
+        return True
 
     def run_complete(self, models, diamonddb, run_diamond=1):
         self.selftraining()
@@ -378,6 +439,7 @@ class gmes:
 
         if len(subgmes) == 0:
             logging.warning("Could not predict any proteins in this file")
+            return False
         else:
             aminoacidcount = []
             for g in subgmes:
@@ -395,11 +457,11 @@ class gmes:
                 aminoacidcount.append(i)
             if len(aminoacidcount) == 0:
                 logging.error("Could not determine best model")
-                exit(1)
+                return False
             # set the best model as the model leading to the most amino acids
             idx = aminoacidcount.index(max(aminoacidcount))
-            self.bestpremodel = subgmes[idx]
-            logging.info("Best model set as: %s" % os.path.basename(self.bestpremodel.model))
+            logging.info("Best model set as: %s" % os.path.basename(subgmes[idx].model))
+            return subgmes[idx]
 
     def fetchinfomap(self):
         """
@@ -428,13 +490,16 @@ class gmes:
         If multiple modles have similar fit, we just again chose the best one
         """
         self.fetchinfomap()
+        logging.debug("Inferring model")
 
         candidates = self.score_models(self.modelinfomap, tax)
 
         if len(candidates) > n:
             candidates = sample(candidates, n)
+            logging.debug("Reduced models to {}".format(n))
         # for each candidate, try to download the model into a file
         modeldir = os.path.join(self.outdir, "models")
+        delete_folder(modeldir)
         create_dir(modeldir)
         for model in candidates:
             self.fetch_model(modeldir, url, model)
@@ -470,6 +535,7 @@ class gmes:
         return infocsv
 
     def score_models(self, infomap, lng):
+        logging.debug("scoring all models")
         scores = defaultdict(int)
 
         for model, mlng in infomap.items():
@@ -482,6 +548,7 @@ class gmes:
         for m, s in scores.items():
             if s == maxscore:
                 candidates.append(m)
+                logging.debug("Choose model {} with score {}".format(m, s))
         return candidates
 
     def writetax(self):
