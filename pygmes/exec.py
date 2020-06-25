@@ -111,6 +111,7 @@ class gmes:
             self.check_for_license_issue(self.logfile)
             touch(failpath)
             logging.info("GeneMark-ES in self-training mode has failed")
+            return
         # predict and then clean
         self.gtf2faa()
         self.clean_gmes_files()
@@ -338,8 +339,8 @@ class gmes:
                 self.premodeltax = self.bestpremodel.tax
                 # print lineage of model compared to the infered tax
                 print_lngs(self.modelinfomap[self.bestpremodel.modelname], self.premodeltax)
-                localmodals = self.infer_model(self.premodeltax)
-                self.premodel(localmodals, stage=2)
+                localmodels = self.infer_model(self.premodeltax)
+                self.premodel(localmodels, stage=2)
 
                 if run_diamond > 1:
                     self.bestpremodel.estimate_tax(diamonddb)
@@ -387,10 +388,14 @@ class gmes:
                         i += len(seq)
                 except FastaIndexingError:
                     logging.warning("Could not read fasta")
-                except Exception:
+                except Exception as e:
                     logging.debug("Unhandled pyfaidx Fasta error")
+                    print(e)
 
                 aminoacidcount.append(i)
+            if len(aminoacidcount) == 0:
+                logging.error("Could not determine best model")
+                exit(1)
             # set the best model as the model leading to the most amino acids
             idx = aminoacidcount.index(max(aminoacidcount))
             self.bestpremodel = subgmes[idx]
