@@ -384,36 +384,6 @@ class gmes:
 
         return True
 
-    def run_complete(self, models, diamonddb, run_diamond=1):
-        self.selftraining()
-        if self.check_success():
-            logging.info("Ran GeneMark-ES successfully")
-            # predict the lng now
-            logging.info("Predicting the lineage now")
-            self.estimate_tax(diamonddb)
-        else:
-            logging.info("Using pre-trained models")
-            self.fetchinfomap()
-            self.premodel(models)
-            if self.bestpremodel:
-                self.bestpremodel.estimate_tax(diamonddb)
-                self.premodeltax = self.bestpremodel.tax
-                # print lineage of model compared to the infered tax
-                print_lngs(self.modelinfomap[self.bestpremodel.modelname], self.premodeltax)
-                localmodels = self.infer_model(self.premodeltax)
-                self.premodel(localmodels, stage=2)
-
-                if run_diamond > 1:
-                    self.bestpremodel.estimate_tax(diamonddb)
-                    self.premodeltax = self.bestpremodel.tax
-                # print lineage of model compared to the infered tax
-                print_lngs(self.modelinfomap[self.bestpremodel.modelname], self.premodeltax)
-                # set the final values of of the protein prediction step
-                self.finalfaa = self.bestpremodel.finalfaa
-                self.bedfile = self.bestpremodel.bedfile
-                self.tax = self.bestpremodel.tax
-            # self.prediction()
-
     def estimate_tax(self, db):
         ddir = os.path.join(self.outdir, "diamond")
         create_dir(ddir)
