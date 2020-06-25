@@ -482,6 +482,7 @@ def main():
     )
     parser.add_argument("-v", "--version", action="version", version=f"pygmes version {version.__version__}")
     options = parser.parse_args()
+    create_dir(options.output)
 
     # define logging
     logLevel = logging.INFO
