@@ -465,7 +465,7 @@ class gmes:
         self.fetchinfomap()
         logging.debug("Inferring model")
 
-        candidates = self.score_models(self.modelinfomap, tax)
+        candidates = self.score_models(self.modelinfomap, tax, at_least=n)
 
         if len(candidates) > n:
             candidates = sample(candidates, n)
@@ -507,21 +507,30 @@ class gmes:
 
         return infocsv
 
-    def score_models(self, infomap, lng):
+    def score_models(self, infomap, lng, at_least=3):
         logging.debug("scoring all models")
-        scores = defaultdict(int)
+        scores = []
+        candidates = []
 
         for model, mlng in infomap.items():
-            for a, b in zip(lng, mlng):
-                if int(a) == int(b):
-                    scores[model] += 1
-        # get all models with the highest score
-        maxscore = max([v for k, v in scores.items()])
-        candidates = []
-        for m, s in scores.items():
-            if s == maxscore:
-                candidates.append(m)
-                logging.debug("Choose model {} with score {}".format(m, s))
+            score = len(set(lng) & set(mlng))
+            scores.append((model, score))
+        # sort scored models
+        scores.sort(key=lambda x: x[1], reverse=True)
+        if len(scores) == 0:
+            logging.error("No models were obtained, so none were scored")
+            exit(1)
+
+        maxscore = scores[0][1]
+        # get all models with the highest score,
+        # and then fill up till at_least
+        for x in scores:
+            if x[1] == maxscore:
+                candidates.append(x[0])
+                logging.debug("Choose model {} with score {}".format(x[0], x[1]))
+            elif len(candidates) < at_least and x[1] != maxscore:
+                candidates.append(x[0])
+                logging.debug("Choose model {} with score {}".format(x[0], x[1]))
         return candidates
 
     def writetax(self):
