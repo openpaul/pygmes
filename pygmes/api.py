@@ -12,8 +12,8 @@ import gzip
 from glob import glob
 from pyfaidx import Fasta
 
-this_dir, this_filename = os.path.split(__file__)
-MODELS_PATH = os.path.join(this_dir, "data", "models")
+path = os.path.abspath(os.path.dirname(__file__))
+MODELS_PATH = os.path.join(path, "data", "models")
 
 
 class bin:
