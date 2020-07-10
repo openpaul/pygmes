@@ -85,14 +85,14 @@ class multistep_gmes:
                 premodel_1.estimate_tax(diamonddb)
                 print_lngs(model_run.modelinfomap[premodel_1.modelname], premodel_1.tax)
                 localmodels = model_run.infer_model(premodel_1.tax)
-                premodel_2 = model_run.premodel(localmodels, stage=2)
+                premodel_2 = model_run.premodel(localmodels, stage=2, existing_prediction=premodel_1)
 
-                # print lineage of model compared to the infered tax
-                print_lngs(model_run.modelinfomap[premodel_2.modelname], premodel_1.tax)
-                if premodel_2.check_success():
+                if premodel_2 is not False and premodel_2.check_success():
                     self.designate_winner(premodel_2)
+                    # print lineage of model compared to the infered tax
+                    print_lngs(model_run.modelinfomap[premodel_2.modelname], premodel_1.tax)
                 else:
-                    logging.error("Choosen model did not work")
+                    logging.error("We could not predict any proteins using pretrained models")
 
     def designate_winner(self, run, training=False):
         self.gmes = run
@@ -393,14 +393,18 @@ class gmes:
         d = diamond(self.protfaa, ddir, db, sample=200, ncores=self.ncores)
         self.tax = d.lineage
 
-    def premodel(self, models, stage=1):
+    def premodel(self, models, stage=1, existing_prediction=None):
         logging.debug("On bin: %s" % self.fasta)
         logging.debug("Running the pre Model stage %d" % stage)
         logging.debug("Using model directory: %s", models)
         self.bestpremodel = False
         modelfiles = glob.glob(os.path.join(models, "*.mod"))
-        subgmes = []
-        logging.debug("Running {} models".format(len(modelfiles)))
+        # incoporate existing prediction if possible
+        if existing_prediction is None:
+            subgmes = []
+        else:
+            subgmes = [existing_prediction]
+        logging.debug("Predicting proteins using {} models".format(len(modelfiles)))
         for model in modelfiles:
             logging.debug("Using model %s" % os.path.basename(model))
             name = os.path.basename(model)
@@ -409,6 +413,9 @@ class gmes:
             g.prediction(model)
             if g.check_success():
                 subgmes.append(g)
+                if stage == 1:
+                    logging.debug("Stopping stage 1 prediction, as we have one proteome to predict the lineage")
+                    break
 
         if len(subgmes) == 0:
             logging.warning("Could not predict any proteins in this file")
