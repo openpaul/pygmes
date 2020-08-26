@@ -1,6 +1,7 @@
 import os
 import logging
 import argparse
+from collections import defaultdict
 from pygmes.exec import gmes, multistep_gmes
 from pygmes.diamond import multidiamond
 import pygmes.version as version
@@ -185,7 +186,7 @@ class pygmes:
             return fastaOut
         mappingfile = os.path.join(folder, "mapping.csv")
         logging.debug("Cleaning fasta file")
-        nms = []
+        nms = defaultdict(int)
         with open(fastaOut, "w") as o, open(mappingfile, "w") as mo:
             mo.write("old,new\n")
             if fastaIn.endswith(".gz"):
@@ -206,14 +207,15 @@ class pygmes:
                         # get first element, usually a chromosome
                         N = l[0].strip()
                         # while the name is already taken, count up and reformat
-                        n = N
-                        i = 0
-                        while n in nms:
-                            n = "{}.{}".format(N, i)
-                            i += 1
+                        n = "{}.{}".format(N, nms[N])
+                        # if the name is already taken, count up and reformat
+                        if nms[N] != 0:
+                            n = "{}.{}".format(N, nms[N])
+                        else:
+                            n = N
+                        nms[N] += 1
+
                         o.write("{}\n".format(n))
-                        # finally add to know  name list
-                        nms.append(n)
                         mappingline = "{},{}\n".format(line, n).replace(">", "")
                         mo.write(mappingline)
                     else:
