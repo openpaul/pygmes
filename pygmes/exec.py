@@ -100,7 +100,7 @@ class multistep_gmes:
         if training:
             logging.debug("Trying to copy the model file")
             model_out = os.path.join(self.outdir, "gmhmm.mod")
-            if os.path.exists(run.model):
+            if run.model and os.path.exists(run.model):
                 shutil.copy(run.model, model_out)
             else:
                 logging.debug("Could not find model: {}".format(run.model))
@@ -135,6 +135,7 @@ class gmes:
         self.bedfile = False
         self.tax = []
         self.modelinfomap = {}
+        self.model = None
         if ncores == 1:
             logging.warning(
                 "You are running GeneMark-ES with a single core. This will be slow. We recommend using 4-8 cores."

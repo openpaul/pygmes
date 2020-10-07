@@ -12,6 +12,7 @@ import shutil
 import gzip
 from glob import glob
 from pyfaidx import Fasta
+from pygmes.cache import cache
 
 path = os.path.abspath(os.path.dirname(__file__))
 MODELS_PATH = os.path.join(path, "data", "models")
@@ -149,7 +150,7 @@ class pygmes:
     **ncores:** number of threads to use
     """
 
-    def __init__(self, fasta, outdir, db, clean=True, ncores=1, cleanup=False):
+    def __init__(self, fasta, outdir, db, clean=True, ncores=1, cleanup=False, cache=None):
         self.fasta = fasta
         self.outdir = outdir
         self.ncores = ncores
@@ -167,6 +168,13 @@ class pygmes:
         ms = multistep_gmes(self.cleanfasta, outdir, ncores, db, MODELS_PATH)
         if cleanup and ms.success is True:
             ms.cleanup()
+
+        # cacheing
+        if cache is not None:
+            fs = ["predicted_proteins.faa", "predicted_proteins.bed"]
+            fs = [os.path.join(outdir, x) for x in fs]
+            if not cache.store(fs[0], fs[1]):
+                logging.warning("storing cache did not work")
 
     def clean_fasta(self, fastaIn, folder, rename=True):
         create_dir(folder)
@@ -450,6 +458,13 @@ def main():
         "--input", "-i", type=str, help="path to the fasta file, or in metagenome mode path to bin folder", default=None
     )
     parser.add_argument("--output", "-o", type=str, required=True, help="Path to the output folder")
+    parser.add_argument(
+        "--global_cache",
+        type=str,
+        required=False,
+        help="Path to use as global cache. Only in normal mode",
+        default=None,
+    )
     parser.add_argument("--db", "-d", type=str, required=True, help="Path to the diamond DB")
     parser.add_argument(
         "--noclean",
@@ -516,6 +531,22 @@ def main():
     logging.debug("Using %d threads" % options.ncores)
 
     if not options.meta:
+        # check for global cache if needed:
+        gc = None
+        if options.global_cache is not None:
+            # check for global cache output
+            gc = cache(options.global_cache, options.input)
+            if gc.exists():
+                # easy, as we now just copy the output
+                os.makedirs(options.output, exist_ok=True)
+                logging.info("copy cache")
+                fs = ["predicted_proteins.faa", "predicted_proteins.bed"]
+                for f in fs:
+                    path = os.path.join(options.output, f)
+                    logging.debug("trying to restore {}".format(path))
+                    gc.restore(path)
+                exit()
+
         pygmes(
             options.input,
             options.output,
@@ -523,6 +554,7 @@ def main():
             clean=options.noclean,
             cleanup=options.cleanup,
             ncores=options.ncores,
+            cache=gc,
         )
     else:
         metapygmes(options.input, options.output, options.db, clean=options.noclean, ncores=options.ncores)
